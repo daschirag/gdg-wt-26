@@ -1,1 +1,1 @@
-/target
+target/\ndata/\n*.aqe\n*.csv

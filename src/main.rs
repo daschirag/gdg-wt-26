@@ -13,9 +13,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         println!("Available commands: gen <num> [csv_path], query <sql>");
-        return Ok(());
+        println!("No arguments provided. Starting interactive REPL...");
+        return Ok(repl::start_repl(config)?);
     }
     let command = &args[1];
+
+    if command == "verify" {
+        println!("Verifying all SSTables for CRC integrity...");
+        for i in 0..10 {
+            let path = format!("data/sstable_{}.aqe", i);
+            if !std::path::Path::new(&path).exists() { continue; }
+            let reader = storage::sstable::reader::SSTableReader::new(&path);
+            match reader.get_metadata() {
+                Ok(meta) => println!("  {}: OK ({} rows, ts: {} - {}, v: {})", 
+                    path, meta.row_count, meta.min_ts, meta.max_ts, meta.schema_version),
+                Err(e) => println!("  {}: FAILED: {:?}", path, e),
+            }
+        }
+        return Ok(());
+    }
 
     if command == "gen" {
         let num_rows: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(100_000);
@@ -23,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 1. Data Generation
         let start_gen = Instant::now();
-        let rows = generate_dataset(num_rows, config.seed, csv_dump_path);
+        let rows = generate_dataset(num_rows, &config, csv_dump_path);
         let duration_gen = start_gen.elapsed();
 
         // 2. Storage - Flush to 10 SSTables
@@ -34,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let chunk = &rows[i * chunk_size..(i + 1) * chunk_size];
             let path = format!("data/sstable_{}.aqe", i);
             let mut writer = storage::sstable::writer::SSTableWriter::new(&path)?;
-            writer.write_sstable(chunk, config.bloom_fpr)?;
+            writer.write_sstable(chunk, config.bloom_fpr, config.verify_crc)?;
         }
         let duration_flush = start_flush.elapsed();
         println!("GEN_TIME: {:?}", duration_gen);
@@ -56,6 +72,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let duration = start.elapsed();
 
         println!("Execution Time: {:?}", duration);
+        println!("Rows Read: {}", result.rows_read);
+        println!("--- Performance Profile ---");
+        println!("  Bloom Filter:     {:.2}ms", result.profile.bloom_filter_ms);
+        println!("  SST Sampling:     {:.2}ms", result.profile.sst_sampling_ms);
+        println!("  Disk IO (Read):   {:.2}ms", result.profile.io_read_ms);
+        println!("  Deserialization:  {:.2}ms", result.profile.deserialization_ms);
+        println!("  CRC Verify:       {:.2}ms", result.profile.crc_verify_ms);
+        println!("  Filtering:        {:.2}ms", result.profile.filtering_ms);
+        println!("  Aggregation:      {:.2}ms", result.profile.aggregation_ms);
+        println!("---------------------------");
+
         match result.value {
             AggregateValue::Groups(groups) => {
                 for (k, v, c) in groups {
