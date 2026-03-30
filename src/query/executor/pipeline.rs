@@ -16,12 +16,62 @@ impl Pipeline {
     }
 
     pub fn execute(&self, plan: &QueryPlan, config: &crate::config::Config) -> Result<QueryResult, QueryError> {
-        // 1. Calculate sampling rates
+        let mut overall_profile = crate::types::QueryProfile::default();
+        
+        // 1. Metadata-Only Fast Path (for global COUNT/SUM/AVG without filters)
+        if plan.filter.is_none() && plan.group_by.is_none() {
+            let mut total_count = 0u64;
+            let mut total_sum = 0.0;
+            let mut possible = true;
+            let mut found_any = false;
+
+            for path in &self.sstables {
+                if let Ok(meta) = SSTableReader::new(path).get_metadata() {
+                    found_any = true;
+                    total_count += meta.row_count;
+                    match &plan.aggregation {
+                        crate::query::ast::Aggregation::Count => {}
+                        crate::query::ast::Aggregation::Sum(col) | crate::query::ast::Aggregation::Avg(col) => {
+                            // Find column index from schema to match metadata col_N
+                            if let Some(idx) = config.schema.columns.iter().position(|c| &c.name == col) {
+                                let key = format!("col_{}", idx);
+                                if let Some(s) = meta.sums.get(&key) {
+                                    total_sum += *s;
+                                } else { possible = false; break; }
+                            } else { possible = false; break; }
+                        }
+                    }
+                } else { possible = false; break; }
+            }
+
+            if possible && found_any {
+                let value = match &plan.aggregation {
+                    crate::query::ast::Aggregation::Count => AggregateValue::Scalar(total_count as f64),
+                    crate::query::ast::Aggregation::Sum(_) => AggregateValue::Scalar(total_sum),
+                    crate::query::ast::Aggregation::Avg(_) => {
+                        if total_count > 0 { AggregateValue::Scalar(total_sum / total_count as f64) } 
+                        else { AggregateValue::Empty }
+                    }
+                };
+                
+                return Ok(QueryResult {
+                    value,
+                    confidence: Confidence(1.0), // Exact
+                    rows_read: 0, // No rows actually read
+                    warnings: vec!["Metadata Fast-Path: Result is exact".to_string()],
+                    profile: overall_profile,
+                });
+            }
+        }
+
+        // 2. Calculate sampling rates
+        let start_sampling = std::time::Instant::now();
         let sampling_rate = crate::aqp::accuracy::AccuracyCalculator::calculate_sampling_rate(
             config.accuracy_target,
             config.k
         );
         let (sst_rate, row_rate) = crate::aqp::accuracy::AccuracyCalculator::split_sampling_rate(sampling_rate);
+        overall_profile.sst_sampling_ms = start_sampling.elapsed().as_secs_f64() * 1000.0;
 
         let mut warnings = Vec::new();
         if sampling_rate < 0.05 {
@@ -29,22 +79,15 @@ impl Pipeline {
         }
 
         // 2. Bloom filter check (equality only)
+        let start_bloom = std::time::Instant::now();
         let filtered_sstables = self.apply_bloom_filter(plan);
+        overall_profile.bloom_filter_ms = start_bloom.elapsed().as_secs_f64() * 1000.0;
 
         // 3. SSTable-level sampling
-        // We need row counts for weighted sampling
+        let start_sst_sample = std::time::Instant::now();
         let sst_with_counts: Vec<(String, u64)> = filtered_sstables.iter()
             .map(|path| {
-                let _reader = SSTableReader::new(path);
-                // Simple version: we'd ideally store row counts in a manifest or header we can read quickly
-                // For MVP, we'll just read enough to get the count
-                let count = if let Ok(mut file) = std::fs::File::open(path) {
-                    let mut buf = [0u8; 8];
-                    use std::io::{Read, Seek, SeekFrom};
-                    if file.seek(SeekFrom::Start(4)).is_ok() && file.read_exact(&mut buf).is_ok() {
-                        u64::from_le_bytes(buf)
-                    } else { 0 }
-                } else { 0 };
+                let count = SSTableReader::new(path).get_metadata().map(|m| m.row_count).unwrap_or(0);
                 (path.clone(), count)
             })
             .collect();
@@ -58,21 +101,32 @@ impl Pipeline {
         let sampled_sst_paths_with_counts: Vec<(String, u64)> = sampled_sst_paths.into_iter().filter_map(|p| {
             sst_with_counts.iter().find(|(path, _)| *path == p).cloned()
         }).collect();
+        overall_profile.sst_sampling_ms += start_sst_sample.elapsed().as_secs_f64() * 1000.0;
 
         // 4. Row-level sampling and Scanning
-        let all_sampled_rows = self.scan_and_sample(&sampled_sst_paths_with_counts, plan, row_rate, config.seed, config.min_group_rows)?;
+        let (all_sampled_rows, scan_profile) = self.scan_and_sample(&sampled_sst_paths_with_counts, plan, row_rate, config.seed, config.min_group_rows, config)?;
+        
+        // Merge scan profile into overall profile
+        overall_profile.io_read_ms += scan_profile.io_read_ms;
+        overall_profile.deserialization_ms += scan_profile.deserialization_ms;
+        overall_profile.crc_verify_ms += scan_profile.crc_verify_ms;
+        overall_profile.filtering_ms += scan_profile.filtering_ms;
 
         if all_sampled_rows.is_empty() {
              return Ok(QueryResult {
                  value: AggregateValue::Empty,
                  confidence: Confidence(0.0),
                  warnings: vec!["Empty sample obtained".to_string()],
+                 rows_read: 0,
+                 profile: overall_profile,
              });
         }
 
         // 5. Aggregation
-        let aggregator = Aggregator::new(plan.aggregation.clone(), plan.group_by.clone(), config.min_group_rows);
+        let start_agg = std::time::Instant::now();
+        let aggregator = Aggregator::new(plan.aggregation.clone(), plan.group_by.clone(), config.min_group_rows, config);
         let agg_value = aggregator.aggregate(&all_sampled_rows);
+        overall_profile.aggregation_ms = start_agg.elapsed().as_secs_f64() * 1000.0;
 
         // 6. Scale result
         let scaled_value = crate::aqp::estimator::Estimator::scale_result(
@@ -98,6 +152,8 @@ impl Pipeline {
             value: scaled_value,
             confidence,
             warnings,
+            rows_read: total_sampled,
+            profile: overall_profile,
         })
     }
 
@@ -122,7 +178,7 @@ impl Pipeline {
         self.sstables.clone()
     }
 
-    fn scan_and_sample(&self, sstables: &[(String, u64)], plan: &QueryPlan, row_rate: f64, seed: u64, min_group_rows: u64) -> Result<Vec<RowDisk>, QueryError> {
+    fn scan_and_sample(&self, sstables: &[(String, u64)], plan: &QueryPlan, row_rate: f64, seed: u64, _min_group_rows: u64, config: &crate::config::Config) -> Result<(Vec<RowDisk>, crate::types::QueryProfile), QueryError> {
         let mut starts = Vec::with_capacity(sstables.len());
         let mut current_offset = 0;
         for (_, count) in sstables {
@@ -130,11 +186,12 @@ impl Pipeline {
             current_offset += count;
         }
 
-        let results: Result<Vec<Vec<RowDisk>>, StorageError> = sstables.par_iter().zip(starts.par_iter())
+        let results: Result<Vec<(Vec<RowDisk>, crate::types::QueryProfile)>, StorageError> = sstables.par_iter().zip(starts.par_iter())
             .map(|((path, _), start_offset)| {
                 let reader = SSTableReader::new(path);
-                let rows = reader.read_rows()?;
+                let (rows, mut file_profile) = reader.read_rows_profiled(config.verify_crc)?;
                 
+                let start_filter = std::time::Instant::now();
                 let mut group_counts = std::collections::HashMap::new();
                 let mut sampled = Vec::new();
                 
@@ -142,16 +199,16 @@ impl Pipeline {
                     let global_offset = *start_offset + i as u64;
                     let is_sampled = crate::aqp::sampler::row_sampler::RowSampler::is_row_sampled(global_offset, row_rate, seed);
                     
-                    if !self.apply_filter(&r, plan) {
+                    if !self.apply_filter(&r, plan, config) {
                         continue;
                     }
 
                     let mut force_include = false;
                     if let Some(group_col) = &plan.group_by {
-                        if let Some(val) = get_value(&r, group_col) {
+                        if let Some(val) = get_value(&r, group_col, config) {
                             let key = format!("{:?}", val);
                             let count = group_counts.entry(key).or_insert(0);
-                            if *count < min_group_rows {
+                            if *count < config.min_group_rows {
                                 force_include = true;
                             }
                             if is_sampled || force_include {
@@ -164,18 +221,31 @@ impl Pipeline {
                         sampled.push(r);
                     }
                 }
+                file_profile.filtering_ms = start_filter.elapsed().as_secs_f64() * 1000.0;
                 
-                Ok(sampled)
+                Ok((sampled, file_profile))
             })
             .collect();
 
-        let rows_vec = results.map_err(|e| QueryError::UnsupportedOperation(e.to_string()))?;
-        Ok(rows_vec.into_iter().flatten().collect())
+        let intermediate = results.map_err(|e| QueryError::UnsupportedOperation(e.to_string()))?;
+        
+        let mut all_rows = Vec::new();
+        let mut merged_profile = crate::types::QueryProfile::default();
+        
+        for (rows, profile) in intermediate {
+            all_rows.extend(rows);
+            merged_profile.io_read_ms += profile.io_read_ms;
+            merged_profile.deserialization_ms += profile.deserialization_ms;
+            merged_profile.crc_verify_ms += profile.crc_verify_ms;
+            merged_profile.filtering_ms += profile.filtering_ms;
+        }
+        
+        Ok((all_rows, merged_profile))
     }
 
-    fn apply_filter(&self, row: &RowDisk, plan: &QueryPlan) -> bool {
+    fn apply_filter(&self, row: &RowDisk, plan: &QueryPlan, config: &crate::config::Config) -> bool {
         if let Some(filter) = &plan.filter {
-            if let Some(val) = get_value(row, &filter.column) {
+            if let Some(val) = get_value(row, &filter.column, config) {
                 match val {
                     Value::Int(row_val) => {
                         if let Ok(filter_val) = filter.value.parse::<i64>() {

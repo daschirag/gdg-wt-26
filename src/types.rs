@@ -2,10 +2,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RowDisk {
-    pub user_id: u64,
-    pub status: u8,    // 0=active 1=inactive 2=banned
-    pub country: u8,   // 0=IN 1=US 2=DE 3=JP 4=BR
-    pub timestamp: u64,
+    pub version: u32,
+    pub crc: u32,
+    pub values: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SSTableMetadata {
+    pub row_count: u64,
+    pub min_ts: i64,
+    pub max_ts: i64,
+    pub schema_version: u32,
+    pub sums: std::collections::HashMap<String, f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,19 +33,27 @@ pub enum AggregateValue {
     Empty,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct QueryProfile {
+    pub bloom_filter_ms: f64,
+    pub sst_sampling_ms: f64,
+    pub io_read_ms: f64,
+    pub deserialization_ms: f64,
+    pub crc_verify_ms: f64,
+    pub filtering_ms: f64,
+    pub aggregation_ms: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryResult {
     pub value: AggregateValue,
     pub confidence: Confidence,
     pub warnings: Vec<String>,
+    pub rows_read: usize,
+    pub profile: QueryProfile,
 }
 
-pub fn get_value(row: &RowDisk, col: &str) -> Option<Value> {
-    match col {
-        "user_id" => Some(Value::Int(row.user_id as i64)),
-        "status" => Some(Value::Int(row.status as i64)),
-        "country" => Some(Value::Int(row.country as i64)),
-        "timestamp" => Some(Value::Int(row.timestamp as i64)),
-        _ => None,
-    }
+pub fn get_value(row: &RowDisk, col: &str, config: &crate::config::Config) -> Option<Value> {
+    let idx = config.schema.columns.iter().position(|c| c.name == col)?;
+    row.values.get(idx).cloned()
 }
