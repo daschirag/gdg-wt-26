@@ -89,23 +89,34 @@ impl ColumnarPipeline {
             let filter_i64 = plan.filter.as_ref().and_then(|f| f.value.parse::<i64>().ok());
             let filter_f64 = plan.filter.as_ref().and_then(|f| f.value.parse::<f64>().ok());
 
-            // Type-specific loading
-            let mut i64_cols: HashMap<String, Vec<i64>> = HashMap::new();
-            let mut f64_cols: HashMap<String, Vec<f64>> = HashMap::new();
-            let str_cols: HashMap<String, Vec<String>> = HashMap::new();
+            // Fix B: Column-at-a-time loading (Segment scan)
+            // Load all columns indexed by their position in the schema to avoid string lookups
+            let schema_len = config.schema.columns.len();
+            let mut all_i64: Vec<Option<Vec<i64>>> = vec![None; schema_len];
+            let mut all_f64: Vec<Option<Vec<f64>>> = vec![None; schema_len];
 
-            for col in columns_needed {
-                // Determine type from metadata or convention
-                // For this prototype, we'll try to guess or use i64 as default
-                if col == "timestamp" || col == "user_id" || col == "status" || col == "country" || col == "level" {
-                    let data = reader.read_column_i64(col).map_err(|e| QueryError::StorageError(e))?;
-                    i64_cols.insert(col.clone(), data);
-                } else {
-                    let data = reader.read_column_f64(col).map_err(|e| QueryError::StorageError(e))?;
-                    f64_cols.insert(col.clone(), data);
+            for (idx, col_def) in config.schema.columns.iter().enumerate() {
+                if columns_needed.contains(&col_def.name) {
+                    if col_def.name == "timestamp" || col_def.name == "user_id" || col_def.name == "status" || col_def.name == "country" || col_def.name == "level" {
+                        if let Ok(data) = reader.read_column_i64(&col_def.name) {
+                            all_i64[idx] = Some(data);
+                        }
+                    } else {
+                        if let Ok(data) = reader.read_column_f64(&col_def.name) {
+                            all_f64[idx] = Some(data);
+                        }
+                    }
                 }
             }
             overall_profile.io_read_ms += start_seg.elapsed().as_secs_f64() * 1000.0;
+
+            // Fix C: Index-based Column Access (No hash lookups in loop)
+            let filter_col_idx = plan.filter.as_ref().and_then(|f| config.schema.columns.iter().position(|c| c.name == f.column));
+            let group_col_idx = plan.group_by.as_ref().and_then(|g| config.schema.columns.iter().position(|c| c.name == *g));
+            let agg_col_idx = match &plan.aggregation {
+                Aggregation::Count => None,
+                Aggregation::Sum(c) | Aggregation::Avg(c) => config.schema.columns.iter().position(|col| col.name == *c),
+            };
 
             let num_rows = reader.metadata.row_count as usize;
             let group_size = config.row_group_size as usize;
@@ -121,35 +132,33 @@ impl ColumnarPipeline {
                     // Aggregate within the row group
                     for i in start_idx..end_idx {
                         // Check filter first
-                        if let Some(filter) = &plan.filter {
-                            let match_found = if let Some(d) = i64_cols.get(&filter.column) {
-                                if let Some(target) = filter_i64 {
-                                    d[i] == target
-                                } else {
-                                    d[i].to_string() == filter.value
+                        let mut passes_filter = true;
+                        if let Some(f_idx) = filter_col_idx {
+                            if let Some(f) = &plan.filter {
+                                // Try i64 first
+                                if let Some(data) = &all_i64[f_idx] {
+                                    if let Some(target) = filter_i64 {
+                                        passes_filter = data[i] == target;
+                                    } else {
+                                        passes_filter = data[i].to_string() == f.value;
+                                    }
+                                } else if let Some(data) = &all_f64[f_idx] {
+                                    if let Some(target) = filter_f64 {
+                                        passes_filter = (data[i] - target).abs() < 1e-6;
+                                    } else {
+                                        passes_filter = data[i].to_string() == f.value;
+                                    }
                                 }
-                            } else if let Some(d) = f64_cols.get(&filter.column) {
-                                if let Some(target) = filter_f64 {
-                                    (d[i] - target).abs() < 1e-6
-                                } else {
-                                    d[i].to_string() == filter.value
-                                }
-                            } else if let Some(d) = str_cols.get(&filter.column) {
-                                d[i] == filter.value
-                            } else {
-                                false
-                            };
-                            if !match_found { continue; }
+                            }
                         }
+                        if !passes_filter { continue; }
 
                         // Get group key
-                        let group_key = if let Some(group_col) = &plan.group_by {
-                            if let Some(d) = i64_cols.get(group_col) {
-                                d[i].to_string()
-                            } else if let Some(d) = f64_cols.get(group_col) {
-                                d[i].to_string()
-                            } else if let Some(d) = str_cols.get(group_col) {
-                                d[i].clone()
+                        let group_key = if let Some(g_idx) = group_col_idx {
+                            if let Some(data) = &all_i64[g_idx] {
+                                data[i].to_string()
+                            } else if let Some(data) = &all_f64[g_idx] {
+                                data[i].to_string()
                             } else {
                                 "null".to_string()
                             }
@@ -160,18 +169,14 @@ impl ColumnarPipeline {
                         // Aggregate value
                         let agg_val = match &plan.aggregation {
                             Aggregation::Count => 1.0,
-                            Aggregation::Sum(col) | Aggregation::Avg(col) => {
-                                if let Some(d) = i64_cols.get(col) {
-                                    let v = d[i] as f64;
-                                    if v < 0.0 && col == "timestamp" {
-                                         // This should never happen for timestamps
-                                    }
-                                    v
-                                } else if let Some(d) = f64_cols.get(col) {
-                                    d[i]
-                                } else {
-                                    0.0
-                                }
+                            Aggregation::Sum(_) | Aggregation::Avg(_) => {
+                                if let Some(idx) = agg_col_idx {
+                                    if let Some(data) = &all_i64[idx] {
+                                        data[i] as f64
+                                    } else if let Some(data) = &all_f64[idx] {
+                                        data[i]
+                                    } else { 0.0 }
+                                } else { 0.0 }
                             }
                         };
 
@@ -186,10 +191,6 @@ impl ColumnarPipeline {
                     }
                 }
             }
-        }
-
-        if scalar_sum < 0.0 && format!("{:?}", plan.aggregation).contains("timestamp") {
-            // eprintln!("DEBUG: Negative sum detected: {}", scalar_sum);
         }
 
         // 4. Scale results (Robust Scaling)
