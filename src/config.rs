@@ -13,6 +13,13 @@ pub struct Schema {
     pub columns: Vec<Column>,
 }
 
+impl Schema {
+    pub fn col_index(&self, name: &str) -> Option<usize> {
+        self.columns.iter().position(|c| c.name == name)
+    }
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub accuracy_target: f64,

@@ -4,18 +4,31 @@ use serde::{Deserialize, Serialize};
 pub struct RowDisk {
     pub version: u32,
     pub crc: u32,
+    pub seq: u64,
     pub values: Vec<Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ColumnMetadata {
+    pub encoding: String,
+    pub sum: f64,
+    pub min: f64,
+    pub max: f64,
+    pub distinct_count: u64,
+    pub crc32: u32,
+}
+
+use std::collections::{HashMap, BTreeMap};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SSTableMetadata {
+    pub magic: String,
     pub row_count: u64,
     pub min_ts: i64,
     pub max_ts: i64,
     pub schema_version: u32,
-    pub is_compacted: bool,
-    pub sums: std::collections::HashMap<String, f64>,
-    pub column_encodings: std::collections::HashMap<String, String>,
+    pub columns: BTreeMap<String, ColumnMetadata>,
+    pub checksum: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
@@ -25,13 +38,24 @@ pub enum Value {
     String(String),
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Confidence(pub f64);
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum ConfidenceFlag {
+    High,
+    Low,
+    Exact,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum StoragePath {
+    Row,
+    Columnar,
+    Mixed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AggregateValue {
     Scalar(f64),
-    Groups(Vec<(String, f64, Confidence)>),
+    Groups(Vec<(String, f64, ConfidenceFlag)>),
     Empty,
 }
 
@@ -49,9 +73,12 @@ pub struct QueryProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryResult {
     pub value: AggregateValue,
-    pub confidence: Confidence,
+    pub confidence: ConfidenceFlag,
     pub warnings: Vec<String>,
-    pub rows_read: usize,
+    pub storage_path: StoragePath,
+    pub rows_scanned: u64,
+    pub sampling_rate: f64,
+    pub estimated_variance: f64,
     pub profile: QueryProfile,
 }
 

@@ -1,57 +1,29 @@
 use crate::query::ast::QueryPlan;
-use crate::storage::columnar::segment::Segment;
-use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub enum ExecutionPath {
     Row { sstables: Vec<String> },
     Columnar { segments: Vec<String>, columns_needed: Vec<String> },
+    FastPath { segments: Vec<String>, column: Option<String>, aggregation: crate::query::ast::Aggregation },
+    Mixed { 
+        sstables: Vec<String>, 
+        segments: Vec<String>, 
+        columns_needed: Vec<String> 
+    },
 }
+
+use crate::storage::manager::StorageManager;
 
 pub struct QueryPlanner;
 
 impl QueryPlanner {
-    pub fn plan(plan: &QueryPlan, sst_dir: &Path) -> ExecutionPath {
-        let segments_dir = sst_dir.join("segments");
-        let mut segments = Vec::new();
+    pub fn plan(plan: &QueryPlan, storage: &StorageManager) -> ExecutionPath {
+        let segments = storage.get_all_segments();
+        let sstables = storage.get_all_sstables();
 
-        if segments_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(segments_dir) {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        if entry.path().is_dir() {
-                            segments.push(entry.path().to_str().unwrap().to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        // If no segments exist, we MUST use row path
-        if segments.is_empty() {
-            let mut sstables = Vec::new();
-            if let Ok(entries) = std::fs::read_dir(sst_dir) {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        let path = entry.path();
-                        if path.extension().map_or(false, |ext| ext == "aqe") {
-                            sstables.push(path.to_str().unwrap().to_string());
-                        }
-                    }
-                }
-            }
-            return ExecutionPath::Row { sstables };
-        }
-
-        // Columnar Decision Rules:
-        // 1. If query touches only 1-2 columns -> Columnar
-        // 2. If global COUNT(*) -> Columnar
-        // 3. For now, we'll favor columnar if segments exist.
-        
         let mut columns_needed = Vec::new();
         match &plan.aggregation {
             crate::query::ast::Aggregation::Count => {
-                // For COUNT(*), we just need any column. We'll pick user_id as it's likely the first.
                 columns_needed.push("user_id".to_string());
             }
             crate::query::ast::Aggregation::Sum(col) | crate::query::ast::Aggregation::Avg(col) => {
@@ -71,6 +43,20 @@ impl QueryPlanner {
             }
         }
 
-        ExecutionPath::Columnar { segments, columns_needed }
+        if plan.filter.is_none() && plan.group_by.is_none() && sstables.is_empty() {
+            let col = match &plan.aggregation {
+                crate::query::ast::Aggregation::Count => None,
+                crate::query::ast::Aggregation::Sum(c) | crate::query::ast::Aggregation::Avg(c) => Some(c.clone()),
+            };
+            return ExecutionPath::FastPath { segments, column: col, aggregation: plan.aggregation.clone() };
+        }
+
+        if segments.is_empty() {
+            ExecutionPath::Row { sstables }
+        } else if sstables.is_empty() {
+             ExecutionPath::Columnar { segments, columns_needed }
+        } else {
+             ExecutionPath::Mixed { sstables, segments, columns_needed }
+        }
     }
 }

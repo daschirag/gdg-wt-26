@@ -1,5 +1,4 @@
-use std::path::{Path, PathBuf};
-use crate::storage::compaction::merger::SegmentMerger;
+use std::path::Path;
 use crate::errors::StorageError;
 
 pub struct LcsCompactor;

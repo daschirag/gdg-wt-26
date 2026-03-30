@@ -27,13 +27,16 @@ verify_crc = false
             f.write(config_data.strip())
 
     def run_gen(self, num_rows, csv_path):
-        print(f"Generating {num_rows:,} rows...")
+        print(f"Generating {num_rows:,} rows via Python tool...")
         start = time.perf_counter()
-        # Ensure data dir exists
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-        subprocess.run([self.binary_path, "gen", str(num_rows), csv_path], check=True, capture_output=True)
+        # 1. Run Python Generator
+        subprocess.run(["python3", "tools/gen_data.py", "--num", str(num_rows), "--output", csv_path], check=True, capture_output=True)
+        # 2. Run Rust Loader
+        print(f"Loading CSV into LSM storage...")
+        subprocess.run([self.binary_path, "load", csv_path], check=True, capture_output=True)
         duration = time.perf_counter() - start
-        print(f"Generation & Flush completed in {duration:.2f}s")
+        print(f"Generation & Load completed in {duration:.2f}s")
         return duration
 
     def run_query(self, sql, accuracy):
@@ -42,22 +45,27 @@ verify_crc = false
         result = subprocess.run([self.binary_path, "query", sql], capture_output=True, text=True)
         duration = (time.perf_counter() - start) * 1000
         
-        # Parse rows read
-        rows_match = re.search(r"Rows Read: (\d+)", result.stdout)
+        # Parse rows scanned
+        rows_match = re.search(r"Rows Scanned: (\d+)", result.stdout)
         rows_read = int(rows_match.group(1)) if rows_match else 0
         
+        conf_map = {"High": 0.99, "Low": 0.5, "Exact": 1.0}
+        
         # Parse scalar result
-        scalar_match = re.search(r"SCALAR: ([\d.-]+)\|([\d.]+)", result.stdout)
+        scalar_match = re.search(r"SCALAR: ([\d.-]+)\|(\w+)", result.stdout)
         if scalar_match:
-            return float(scalar_match.group(1)), float(scalar_match.group(2)), duration, rows_read
+            return float(scalar_match.group(1)), conf_map.get(scalar_match.group(2), 0.0), duration, rows_read
         
         # Parse group results
         groups = {}
         for line in result.stdout.splitlines():
             if line.startswith("GROUP:"):
                 parts = line.replace("GROUP: ", "").split("|")
-                # format: key | value | conf
-                groups[parts[0].strip()] = (float(parts[1].strip()), float(parts[2].strip()))
+                # format: key | value | conf_enum
+                if len(parts) >= 3:
+                    val = float(parts[1].strip())
+                    conf = conf_map.get(parts[2].strip(), 0.0)
+                    groups[parts[0].strip()] = (val, conf)
         
         if groups:
             return groups, None, duration, rows_read

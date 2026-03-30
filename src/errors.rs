@@ -12,6 +12,10 @@ pub enum StorageError {
     ReadError(std::io::Error),
     #[error("Invalid format: {0}")]
     InvalidFormat(String),
+    #[error("Metadata schema mismatch")]
+    MetadataSchemaMismatch,
+    #[error("Metadata corrupt")]
+    MetadataCorrupt,
 }
 
 #[derive(Error, Debug)]

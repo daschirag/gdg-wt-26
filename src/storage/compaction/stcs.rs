@@ -1,5 +1,4 @@
-use std::path::{Path, PathBuf};
-use crate::storage::compaction::merger::SegmentMerger;
+use std::path::Path;
 use crate::errors::StorageError;
 
 pub struct StcsCompactor;
@@ -9,12 +8,15 @@ impl StcsCompactor {
         let entries = std::fs::read_dir(sst_dir)?;
         let mut files = Vec::new();
 
+        println!("DEBUG: StcsCompactor scanning {:?}", sst_dir);
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
             if path.extension().map_or(false, |ext| ext == "aqe") {
                 let size = entry.metadata()?.len();
-                files.push((path.to_str().unwrap().to_string(), size));
+                let path_str = path.to_str().unwrap().to_string();
+                println!("DEBUG: Found .aqe candidate: {} ({} bytes)", path_str, size);
+                files.push((path_str, size));
             }
         }
 

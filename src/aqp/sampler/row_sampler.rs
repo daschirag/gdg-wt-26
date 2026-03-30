@@ -1,4 +1,4 @@
-use crate::types::{RowDisk, get_value, Confidence};
+use crate::types::{RowDisk, get_value, ConfidenceFlag};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -12,7 +12,7 @@ impl RowSampler {
         _min_group_rows: u64,
         group_by: &Option<String>,
         config: &crate::config::Config,
-    ) -> (Vec<RowDisk>, Vec<Confidence>) {
+    ) -> (Vec<RowDisk>, Vec<ConfidenceFlag>) {
         let mut sampled_rows = Vec::new();
         let mut group_counts = std::collections::HashMap::new();
 
@@ -36,7 +36,7 @@ impl RowSampler {
             }
         }
 
-        let confidences: Vec<Confidence> = vec![Confidence(1.0)];
+        let confidences: Vec<ConfidenceFlag> = vec![ConfidenceFlag::High];
         (sampled_rows, confidences)
     }
     
@@ -48,3 +48,4 @@ impl RowSampler {
         (h % 1000) < (row_rate * 1000.0) as u64
     }
 }
+

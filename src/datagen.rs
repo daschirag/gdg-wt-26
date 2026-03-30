@@ -56,6 +56,7 @@ pub fn generate_dataset(n: usize, config: &crate::config::Config, csv_path: Opti
         data.push(RowDisk {
             version: 1,
             crc: 0,
+            seq: 0,
             values,
         });
     }

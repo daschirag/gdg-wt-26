@@ -4,3 +4,5 @@ pub mod memtable;
 pub mod flush;
 pub mod columnar;
 pub mod compaction;
+pub mod manager;
+pub mod csv_loader;

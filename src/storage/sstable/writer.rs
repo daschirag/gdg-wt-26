@@ -18,6 +18,12 @@ impl SSTableWriter {
         })
     }
 
+    pub fn write_sstable_to_file(path: &str, rows: &[RowDisk], config: &crate::config::Config) -> Result<(), StorageError> {
+        let mut writer = Self::new(path)?;
+        // Use 1% FPR and check config for crc
+        writer.write_sstable(rows, 0.01, config.verify_crc)
+    }
+
     pub fn write_sstable(&mut self, rows: &[RowDisk], fpr: f64, generate_crc: bool) -> Result<(), StorageError> {
         // 1. Magic bytes
         self.writer.write_all(MAGIC_BYTES)?;
@@ -53,15 +59,30 @@ impl SSTableWriter {
             }
         }
         
-        let metadata = crate::types::SSTableMetadata {
+        let mut column_metadata = std::collections::BTreeMap::new();
+        for (col_name, sum) in sums {
+            column_metadata.insert(col_name, crate::types::ColumnMetadata {
+                encoding: "bincode".to_string(),
+                sum,
+                ..Default::default()
+            });
+        }
+
+        let mut metadata = crate::types::SSTableMetadata {
+            magic: "AQEM".to_string(),
             row_count,
             min_ts: if min_ts == i64::MAX { 0 } else { min_ts },
             max_ts: if max_ts == i64::MIN { 0 } else { max_ts },
             schema_version: rows.first().map(|r| r.version).unwrap_or(1),
-            is_compacted: false,
-            sums,
-            column_encodings: std::collections::HashMap::new(),
+            columns: column_metadata,
+            checksum: 0,
         };
+
+        // Compute metadata checksum
+        let metadata_pre = bincode::serialize(&metadata).map_err(|e| {
+            StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })?;
+        metadata.checksum = crc32fast::hash(&metadata_pre);
 
         let metadata_bytes = bincode::serialize(&metadata).map_err(|e| {
             StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))

@@ -24,9 +24,9 @@ impl SSTableReader {
         let mut reader = BufReader::new(&mut file);
 
         // 1. Magic bytes
-        let mut magic = [0u8; 4];
-        reader.read_exact(&mut magic)?;
-        if &magic != MAGIC_BYTES {
+        let mut magic_raw = [0u8; 4];
+        reader.read_exact(&mut magic_raw)?;
+        if &magic_raw != MAGIC_BYTES {
             return Err(StorageError::MagicMismatch);
         }
 
@@ -40,6 +40,22 @@ impl SSTableReader {
         let metadata: crate::types::SSTableMetadata = bincode::deserialize(&meta_bytes).map_err(|e| {
             StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
         })?;
+
+        // Verify Metadata Magic
+        if metadata.magic != "AQEM" {
+            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid metadata magic")));
+        }
+
+        // Verify Metadata Checksum
+        let mut check_meta = metadata.clone();
+        check_meta.checksum = 0;
+        let metadata_pre = bincode::serialize(&check_meta).map_err(|e| {
+            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })?;
+        let computed = crc32fast::hash(&metadata_pre);
+        if computed != metadata.checksum {
+            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Metadata checksum mismatch")));
+        }
         
         let expected_row_count = metadata.row_count;
         profile.io_read_ms += start_io.elapsed().as_secs_f64() * 1000.0;
@@ -94,9 +110,9 @@ impl SSTableReader {
         let mut file = File::open(&self.path)?;
         let mut reader = BufReader::new(&mut file);
 
-        let mut magic = [0u8; 4];
-        reader.read_exact(&mut magic)?;
-        if &magic != MAGIC_BYTES {
+        let mut magic_raw = [0u8; 4];
+        reader.read_exact(&mut magic_raw)?;
+        if &magic_raw != MAGIC_BYTES {
             return Err(StorageError::MagicMismatch);
         }
 
@@ -109,6 +125,22 @@ impl SSTableReader {
         let metadata: crate::types::SSTableMetadata = bincode::deserialize(&meta_bytes).map_err(|e| {
             StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
         })?;
+
+        // 1. Verify Magic
+        if metadata.magic != "AQEM" {
+            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid metadata magic")));
+        }
+
+        // 2. Verify Checksum
+        let mut check_meta = metadata.clone();
+        check_meta.checksum = 0;
+        let metadata_pre = bincode::serialize(&check_meta).map_err(|e| {
+            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })?;
+        let computed = crc32fast::hash(&metadata_pre);
+        if computed != metadata.checksum {
+            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Metadata checksum mismatch")));
+        }
         
         Ok(metadata)
     }
@@ -122,7 +154,14 @@ impl SSTableReader {
         let mut reader = BufReader::new(&mut file);
 
         // Skip magic and row count
-        reader.seek(SeekFrom::Start(4 + 8))?;
+        // Note: this skip logic depends on file layout.
+        // magic(4) + len(4) + metadata(len)
+        let _magic = [0u8; 4];
+        reader.read_exact(&mut [0u8; 4])?;
+        let mut len_bytes = [0u8; 4];
+        reader.read_exact(&mut len_bytes)?;
+        let len = u32::from_le_bytes(len_bytes);
+        reader.seek(SeekFrom::Current(len as i64))?;
 
         let bloom: BloomFilterWrapper = bincode::deserialize_from(&mut reader).map_err(|e| {
             StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
