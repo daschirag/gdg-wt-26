@@ -22,6 +22,8 @@ impl Schema {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub accuracy_target: f64,
+    #[serde(default = "default_aqp_mode")]
+    pub aqp_mode: String,
     pub k: f64,
     pub seed: u64,
     pub bloom_fpr: f64,
@@ -45,6 +47,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             accuracy_target: 0.9,
+            aqp_mode: default_aqp_mode(),
             k: 2.0,
             seed: 42,
             bloom_fpr: 0.01,
@@ -63,6 +66,10 @@ impl Default for Config {
             schema: Schema::default(),
         }
     }
+}
+
+fn default_aqp_mode() -> String {
+    "balanced".to_string()
 }
 
 impl Config {
