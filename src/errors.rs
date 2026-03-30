@@ -10,6 +10,8 @@ pub enum StorageError {
     WriteError(#[from] std::io::Error),
     #[error("Read error: {0}")]
     ReadError(std::io::Error),
+    #[error("Invalid format: {0}")]
+    InvalidFormat(String),
 }
 
 #[derive(Error, Debug)]
