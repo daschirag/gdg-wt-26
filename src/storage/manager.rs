@@ -111,35 +111,9 @@ impl StorageManager {
 
         for row in mem.data.values() {
             // Apply filter
-            let mut include = true;
-            if let Some(filter) = &plan.filter {
-                if let Some(val) = crate::types::get_value(row, &filter.column, &self.config) {
-                    let filter_val = match val {
-                        crate::types::Value::Int(_) => filter
-                            .value
-                            .parse::<i64>()
-                            .map(crate::types::Value::Int)
-                            .unwrap_or(crate::types::Value::String(filter.value.clone())),
-                        crate::types::Value::Float(_) => filter
-                            .value
-                            .parse::<f64>()
-                            .map(crate::types::Value::Float)
-                            .unwrap_or(crate::types::Value::String(filter.value.clone())),
-                        crate::types::Value::String(_) => {
-                            crate::types::Value::String(filter.value.clone())
-                        }
-                    };
-
-                    include = match filter.op {
-                        crate::query::ast::FilterOp::Eq => val == filter_val,
-                        crate::query::ast::FilterOp::Gt => val > filter_val,
-                        crate::query::ast::FilterOp::Lt => val < filter_val,
-                        _ => false,
-                    };
-                } else {
-                    include = false;
-                }
-            }
+            let include = plan.filter.as_ref().map_or(true, |expr| {
+                expr.eval_value(&|column| crate::types::get_value(row, column, &self.config))
+            });
 
             if include {
                 results.push(row.clone());
