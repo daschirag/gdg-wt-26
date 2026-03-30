@@ -47,3 +47,17 @@ pub enum ConfigError {
     #[error("Config file error: {0}")]
     FileError(#[from] std::io::Error),
 }
+
+#[derive(Error, Debug)]
+pub enum IngestionError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Schema mismatch: expected {expected} columns, got {got}")]
+    SchemaMismatch { expected: usize, got: usize },
+    #[error("Storage error: {0}")]
+    Storage(#[from] StorageError),
+    #[error("Query error: {0}")]
+    Query(#[from] QueryError),
+    #[error("Config error: {0}")]
+    Config(String),
+}
