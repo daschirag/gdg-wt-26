@@ -19,7 +19,9 @@ impl Estimator {
                     Aggregation::Count | Aggregation::Sum(_) => {
                         AggregateValue::Scalar(val * (1.0 / sampling_rate))
                     }
-                    Aggregation::Avg(_) => AggregateValue::Scalar(val), // Avg doesn't scale
+                    Aggregation::Avg(_) | Aggregation::ApproxPercentile(_, _) => {
+                        AggregateValue::Scalar(val)
+                    } // Ratio/quantile estimates do not scale linearly.
                 }
             }
             AggregateValue::Groups(groups) => {
@@ -28,7 +30,7 @@ impl Estimator {
                     .map(|(k, v, conf)| {
                         let scaled_v = match aggregation {
                             Aggregation::Count | Aggregation::Sum(_) => v * (1.0 / sampling_rate),
-                            Aggregation::Avg(_) => v,
+                            Aggregation::Avg(_) | Aggregation::ApproxPercentile(_, _) => v,
                         };
                         (k, scaled_v, conf)
                     })

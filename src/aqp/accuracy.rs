@@ -1,6 +1,52 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AqpMode {
+    Fast,
+    Balanced,
+    Accurate,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AqpModeSettings {
+    pub sample_rate: f64,
+    pub tdigest_compression: usize,
+    pub min_filtered_rows: usize,
+    pub max_relative_error: f64,
+}
+
 pub struct AccuracyCalculator;
 
 impl AccuracyCalculator {
+    pub fn parse_mode(mode: &str) -> AqpMode {
+        match mode.to_ascii_lowercase().as_str() {
+            "fast" => AqpMode::Fast,
+            "accurate" => AqpMode::Accurate,
+            _ => AqpMode::Balanced,
+        }
+    }
+
+    pub fn mode_settings(mode: AqpMode) -> AqpModeSettings {
+        match mode {
+            AqpMode::Fast => AqpModeSettings {
+                sample_rate: 0.01,
+                tdigest_compression: 50,
+                min_filtered_rows: 32,
+                max_relative_error: 0.20,
+            },
+            AqpMode::Balanced => AqpModeSettings {
+                sample_rate: 0.05,
+                tdigest_compression: 100,
+                min_filtered_rows: 64,
+                max_relative_error: 0.10,
+            },
+            AqpMode::Accurate => AqpModeSettings {
+                sample_rate: 0.10,
+                tdigest_compression: 200,
+                min_filtered_rows: 128,
+                max_relative_error: 0.05,
+            },
+        }
+    }
+
     pub fn calculate_sampling_rate(accuracy_target: f64, k: f64) -> f64 {
         if accuracy_target >= 1.0 {
             return 1.0;
