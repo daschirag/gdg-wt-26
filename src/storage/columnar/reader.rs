@@ -143,6 +143,70 @@ impl ColumnarReader {
         }).collect())
     }
 
+    pub fn read_column_i64_range(&self, col_name: &str, start: usize, end: usize) -> Result<AlignedVec<i64>, StorageError> {
+        let file_path = self.segment_path.join(format!("{}.col", col_name));
+        let mut file = File::open(file_path)?;
+        
+        let encoding = self.metadata.columns.get(col_name)
+            .map(|c| c.encoding.as_str())
+            .unwrap_or("bincode");
+
+        if encoding != "bincode" {
+            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, format!("Range read not supported for encoding: {}", encoding))));
+        }
+
+        let count = end - start;
+        let mut result = AlignedVec::with_capacity(count);
+        
+        // Skip bincode length prefix (8 bytes) + start elements (8 bytes each)
+        use std::io::{Seek, SeekFrom, Read};
+        file.seek(SeekFrom::Start(8 + (start * 8) as u64))?;
+        
+        // Read directly into aligned memory
+        let bytes_to_read = count * 8;
+        let mut buffer = vec![0u8; bytes_to_read];
+        file.read_exact(&mut buffer)?;
+        
+        for chunk in buffer.chunks_exact(8) {
+            let mut arr = [0u8; 8];
+            arr.copy_from_slice(chunk);
+            result.push(i64::from_le_bytes(arr));
+        }
+
+        Ok(result)
+    }
+
+    pub fn read_column_f64_range(&self, col_name: &str, start: usize, end: usize) -> Result<AlignedVec<f64>, StorageError> {
+        let file_path = self.segment_path.join(format!("{}.col", col_name));
+        let mut file = File::open(file_path)?;
+        
+        let encoding = self.metadata.columns.get(col_name)
+            .map(|c| c.encoding.as_str())
+            .unwrap_or("bincode");
+
+        if encoding != "bincode" {
+            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, format!("Range read not supported for encoding: {}", encoding))));
+        }
+
+        let count = end - start;
+        let mut result = AlignedVec::with_capacity(count);
+        
+        use std::io::{Seek, SeekFrom, Read};
+        file.seek(SeekFrom::Start(8 + (start * 8) as u64))?;
+        
+        let bytes_to_read = count * 8;
+        let mut buffer = vec![0u8; bytes_to_read];
+        file.read_exact(&mut buffer)?;
+        
+        for chunk in buffer.chunks_exact(8) {
+            let mut arr = [0u8; 8];
+            arr.copy_from_slice(chunk);
+            result.push(f64::from_le_bytes(arr));
+        }
+
+        Ok(result)
+    }
+
     pub fn read_raw_values(&self, col_name: &str) -> Result<Vec<Value>, StorageError> {
         let _file_path = self.segment_path.join(format!("{}.col", col_name));
         Ok(vec![]) // Placeholder
