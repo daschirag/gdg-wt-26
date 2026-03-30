@@ -119,4 +119,107 @@ impl<'a> Aggregator<'a> {
 
         AggregateValue::Groups(results)
     }
+
+    pub fn aggregate_columnar(&self, i64_cols: &HashMap<String, Vec<i64>>, f64_cols: &HashMap<String, Vec<f64>>) -> AggregateValue {
+        match &self.group_by {
+            Some(group_col) => self.aggregate_groups_columnar(i64_cols, f64_cols, group_col),
+            None => self.aggregate_scalar_columnar(i64_cols, f64_cols),
+        }
+    }
+
+    fn aggregate_scalar_columnar(&self, i64_cols: &HashMap<String, Vec<i64>>, f64_cols: &HashMap<String, Vec<f64>>) -> AggregateValue {
+        match &self.aggregation {
+            Aggregation::Count => {
+                let count = i64_cols.values().next().map(|v| v.len())
+                    .or_else(|| f64_cols.values().next().map(|v| v.len()))
+                    .unwrap_or(0);
+                AggregateValue::Scalar(count as f64)
+            }
+            Aggregation::Sum(col) => {
+                if let Some(vals) = i64_cols.get(col) {
+                    let sum: f64 = vals.iter().fold(0.0, |acc, &x| acc + x as f64);
+                    AggregateValue::Scalar(sum)
+                } else if let Some(vals) = f64_cols.get(col) {
+                    let sum: f64 = vals.iter().sum::<f64>();
+                    AggregateValue::Scalar(sum)
+                } else {
+                    AggregateValue::Empty
+                }
+            }
+            Aggregation::Avg(col) => {
+                if let Some(vals) = i64_cols.get(col) {
+                    if vals.is_empty() { return AggregateValue::Empty; }
+                    let sum: f64 = vals.iter().fold(0.0, |acc, &x| acc + x as f64);
+                    AggregateValue::Scalar(sum / vals.len() as f64)
+                } else if let Some(vals) = f64_cols.get(col) {
+                    if vals.is_empty() { return AggregateValue::Empty; }
+                    let sum: f64 = vals.iter().sum::<f64>();
+                    AggregateValue::Scalar(sum / vals.len() as f64)
+                } else {
+                    AggregateValue::Empty
+                }
+            }
+        }
+    }
+
+    fn aggregate_groups_columnar(&self, i64_cols: &HashMap<String, Vec<i64>>, f64_cols: &HashMap<String, Vec<f64>>, group_col: &str) -> AggregateValue {
+        let mut group_map: HashMap<String, (f64, u64)> = HashMap::new();
+        
+        let row_count = i64_cols.values().next().map(|v| v.len())
+            .or_else(|| f64_cols.values().next().map(|v| v.len()))
+            .unwrap_or(0);
+
+        for i in 0..row_count {
+            let key = if let Some(vals) = i64_cols.get(group_col) {
+                vals[i].to_string()
+            } else if let Some(vals) = f64_cols.get(group_col) {
+                vals[i].to_string()
+            } else {
+                continue;
+            };
+
+            let entry = group_map.entry(key).or_insert((0.0, 0));
+            
+            match &self.aggregation {
+                Aggregation::Count => {
+                    entry.0 += 1.0;
+                    entry.1 += 1;
+                }
+                Aggregation::Sum(col) => {
+                    if let Some(vals) = i64_cols.get(col) {
+                        entry.0 += vals[i] as f64;
+                        entry.1 += 1;
+                    } else if let Some(vals) = f64_cols.get(col) {
+                        entry.0 += vals[i];
+                        entry.1 += 1;
+                    }
+                }
+                Aggregation::Avg(col) => {
+                    if let Some(vals) = i64_cols.get(col) {
+                        entry.0 += vals[i] as f64;
+                        entry.1 += 1;
+                    } else if let Some(vals) = f64_cols.get(col) {
+                        entry.0 += vals[i];
+                        entry.1 += 1;
+                    }
+                }
+            }
+        }
+
+        let mut results = Vec::new();
+        for (key, (val, count)) in group_map {
+            let final_val = match &self.aggregation {
+                Aggregation::Avg(_) => if count > 0 { val / count as f64 } else { 0.0 },
+                _ => val,
+            };
+            let score = if count == 0 {
+                0.0
+            } else {
+                (1.0 - (1.96 / (count as f64).sqrt())).max(0.0)
+            };
+            results.push((key, final_val, Confidence(score)));
+        }
+
+        AggregateValue::Groups(results)
+    }
 }

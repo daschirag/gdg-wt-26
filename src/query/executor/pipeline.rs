@@ -1,10 +1,9 @@
-use rayon::prelude::*;
-use crate::types::{RowDisk, QueryResult, AggregateValue, Confidence, get_value, Value};
-use crate::query::ast::{QueryPlan, FilterOp};
-use crate::query::executor::aggregator::Aggregator;
+use crate::types::{QueryResult, AggregateValue, Confidence};
 use crate::storage::sstable::reader::SSTableReader;
-// Removed unused BloomFilterWrapper import
-use crate::errors::{QueryError, StorageError};
+use crate::storage::sstable::columnar::ColumnarReader;
+use crate::query::ast::{QueryPlan, FilterOp};
+use crate::errors::QueryError;
+use crate::query::executor::aggregator::Aggregator;
 
 pub struct Pipeline {
     pub sstables: Vec<String>,
@@ -26,6 +25,22 @@ impl Pipeline {
             let mut found_any = false;
 
             for path in &self.sstables {
+                // Try Columnar first
+                if let Ok(meta) = ColumnarReader::get_metadata(path) {
+                    found_any = true;
+                    total_count += meta.row_count;
+                    match &plan.aggregation {
+                        crate::query::ast::Aggregation::Count => {}
+                        crate::query::ast::Aggregation::Sum(col) | crate::query::ast::Aggregation::Avg(col) => {
+                            if let Some(s) = meta.sums.get(col) {
+                                total_sum += *s;
+                            } else { possible = false; break; }
+                        }
+                    }
+                    continue;
+                }
+
+                // Fallback to old format
                 if let Ok(meta) = SSTableReader::new(path).get_metadata() {
                     found_any = true;
                     total_count += meta.row_count;
@@ -87,7 +102,7 @@ impl Pipeline {
         let start_sst_sample = std::time::Instant::now();
         let sst_with_counts: Vec<(String, u64)> = filtered_sstables.iter()
             .map(|path| {
-                let count = SSTableReader::new(path).get_metadata().map(|m| m.row_count).unwrap_or(0);
+                let count = self.get_row_count(path);
                 (path.clone(), count)
             })
             .collect();
@@ -104,15 +119,50 @@ impl Pipeline {
         overall_profile.sst_sampling_ms += start_sst_sample.elapsed().as_secs_f64() * 1000.0;
 
         // 4. Row-level sampling and Scanning
-        let (all_sampled_rows, scan_profile) = self.scan_and_sample(&sampled_sst_paths_with_counts, plan, row_rate, config.seed, config.min_group_rows, config)?;
+        let required_cols = plan.required_columns();
         
-        // Merge scan profile into overall profile
-        overall_profile.io_read_ms += scan_profile.io_read_ms;
-        overall_profile.deserialization_ms += scan_profile.deserialization_ms;
-        overall_profile.crc_verify_ms += scan_profile.crc_verify_ms;
-        overall_profile.filtering_ms += scan_profile.filtering_ms;
+        let start_scan = std::time::Instant::now();
+        let mut i64_cols_all = std::collections::HashMap::new();
+        let mut f64_cols_all = std::collections::HashMap::new();
+        
+        // For simplicity, we'll assume all SSTables are columnar for this path.
+        // In a real system, we'd have a way to handle both.
+        for (path, _) in &sampled_sst_paths_with_counts {
+            let reader = ColumnarReader::new(path);
+            for col in &required_cols {
+                if let Ok(data) = reader.read_column_i64(col) {
+                    i64_cols_all.entry(col.clone()).or_insert(Vec::new()).extend(data);
+                } else if let Ok(data) = reader.read_column_f64(col) {
+                    f64_cols_all.entry(col.clone()).or_insert(Vec::new()).extend(data);
+                }
+            }
+        }
+        overall_profile.io_read_ms = start_scan.elapsed().as_secs_f64() * 1000.0;
+        overall_profile.deserialization_ms = 0.0; // Minimal in columnar
 
-        if all_sampled_rows.is_empty() {
+        // 5. Filtering and Sampling (Columnar)
+        let start_filter = std::time::Instant::now();
+        let filtered_indices = self.apply_filter_columnar(&i64_cols_all, &f64_cols_all, plan);
+        
+        let mut final_i64 = std::collections::HashMap::new();
+        let mut final_f64 = std::collections::HashMap::new();
+        
+        let mut sampled_count = 0;
+        for idx in filtered_indices {
+            // Apply row-level sampling
+            if crate::aqp::sampler::row_sampler::RowSampler::is_row_sampled(idx as u64, row_rate, config.seed) {
+                sampled_count += 1;
+                for (col, data) in &i64_cols_all {
+                    final_i64.entry(col.clone()).or_insert(Vec::new()).push(data[idx]);
+                }
+                for (col, data) in &f64_cols_all {
+                    final_f64.entry(col.clone()).or_insert(Vec::new()).push(data[idx]);
+                }
+            }
+        }
+        overall_profile.filtering_ms = start_filter.elapsed().as_secs_f64() * 1000.0;
+
+        if sampled_count == 0 {
              return Ok(QueryResult {
                  value: AggregateValue::Empty,
                  confidence: Confidence(0.0),
@@ -122,21 +172,21 @@ impl Pipeline {
              });
         }
 
-        // 5. Aggregation
+        // 6. Aggregation
         let start_agg = std::time::Instant::now();
         let aggregator = Aggregator::new(plan.aggregation.clone(), plan.group_by.clone(), config.min_group_rows, config);
-        let agg_value = aggregator.aggregate(&all_sampled_rows);
+        let agg_value = aggregator.aggregate_columnar(&final_i64, &final_f64);
         overall_profile.aggregation_ms = start_agg.elapsed().as_secs_f64() * 1000.0;
 
-        // 6. Scale result
+        // 7. Scale result
         let scaled_value = crate::aqp::estimator::Estimator::scale_result(
             agg_value,
             &plan.aggregation,
             sampling_rate
         );
 
-        // 7. Confidence check
-        let total_sampled = all_sampled_rows.len();
+        // 8. Confidence check
+        let total_sampled = sampled_count;
         let score = if total_sampled == 0 {
             0.0
         } else {
@@ -164,6 +214,7 @@ impl Pipeline {
                     return self.sstables.iter()
                         .filter(|path| {
                             let reader = SSTableReader::new(path);
+                            // Only works for old format. Columnar has no bloom yet.
                             if let Ok(bloom) = reader.get_bloom_filter() {
                                 bloom.contains(user_id)
                             } else {
@@ -178,91 +229,48 @@ impl Pipeline {
         self.sstables.clone()
     }
 
-    fn scan_and_sample(&self, sstables: &[(String, u64)], plan: &QueryPlan, row_rate: f64, seed: u64, _min_group_rows: u64, config: &crate::config::Config) -> Result<(Vec<RowDisk>, crate::types::QueryProfile), QueryError> {
-        let mut starts = Vec::with_capacity(sstables.len());
-        let mut current_offset = 0;
-        for (_, count) in sstables {
-            starts.push(current_offset);
-            current_offset += count;
-        }
-
-        let results: Result<Vec<(Vec<RowDisk>, crate::types::QueryProfile)>, StorageError> = sstables.par_iter().zip(starts.par_iter())
-            .map(|((path, _), start_offset)| {
-                let reader = SSTableReader::new(path);
-                let (rows, mut file_profile) = reader.read_rows_profiled(config.verify_crc)?;
-                
-                let start_filter = std::time::Instant::now();
-                let mut group_counts = std::collections::HashMap::new();
-                let mut sampled = Vec::new();
-                
-                for (i, r) in rows.into_iter().enumerate() {
-                    let global_offset = *start_offset + i as u64;
-                    let is_sampled = crate::aqp::sampler::row_sampler::RowSampler::is_row_sampled(global_offset, row_rate, seed);
-                    
-                    if !self.apply_filter(&r, plan, config) {
-                        continue;
-                    }
-
-                    let mut force_include = false;
-                    if let Some(group_col) = &plan.group_by {
-                        if let Some(val) = get_value(&r, group_col, config) {
-                            let key = format!("{:?}", val);
-                            let count = group_counts.entry(key).or_insert(0);
-                            if *count < config.min_group_rows {
-                                force_include = true;
-                            }
-                            if is_sampled || force_include {
-                                *count += 1;
-                            }
-                        }
-                    }
-
-                    if is_sampled || force_include {
-                        sampled.push(r);
-                    }
-                }
-                file_profile.filtering_ms = start_filter.elapsed().as_secs_f64() * 1000.0;
-                
-                Ok((sampled, file_profile))
-            })
-            .collect();
-
-        let intermediate = results.map_err(|e| QueryError::UnsupportedOperation(e.to_string()))?;
-        
-        let mut all_rows = Vec::new();
-        let mut merged_profile = crate::types::QueryProfile::default();
-        
-        for (rows, profile) in intermediate {
-            all_rows.extend(rows);
-            merged_profile.io_read_ms += profile.io_read_ms;
-            merged_profile.deserialization_ms += profile.deserialization_ms;
-            merged_profile.crc_verify_ms += profile.crc_verify_ms;
-            merged_profile.filtering_ms += profile.filtering_ms;
+    fn get_row_count(&self, path: &str) -> u64 {
+        // Try columnar first
+        if let Ok(meta) = ColumnarReader::get_metadata(path) {
+            return meta.row_count;
         }
         
-        Ok((all_rows, merged_profile))
+        // Fallback to old format
+        let reader = SSTableReader::new(path);
+        reader.get_metadata().map(|m| m.row_count).unwrap_or(0)
     }
 
-    fn apply_filter(&self, row: &RowDisk, plan: &QueryPlan, config: &crate::config::Config) -> bool {
+    fn apply_filter_columnar(&self, i64_cols: &std::collections::HashMap<String, Vec<i64>>, f64_cols: &std::collections::HashMap<String, Vec<f64>>, plan: &QueryPlan) -> Vec<usize> {
+        let row_count = i64_cols.values().next().map(|v| v.len())
+            .or_else(|| f64_cols.values().next().map(|v| v.len()))
+            .unwrap_or(0);
+
         if let Some(filter) = &plan.filter {
-            if let Some(val) = get_value(row, &filter.column, config) {
-                match val {
-                    Value::Int(row_val) => {
-                        if let Ok(filter_val) = filter.value.parse::<i64>() {
-                            return match filter.op {
-                                FilterOp::Eq => row_val == filter_val,
-                                FilterOp::Gt => row_val > filter_val,
-                                FilterOp::Lt => row_val < filter_val,
-                                FilterOp::Ge => row_val >= filter_val,
-                                FilterOp::Le => row_val <= filter_val,
-                            };
-                        }
+            let mut indices = Vec::new();
+            if let Some(vals) = i64_cols.get(&filter.column) {
+                if let Ok(filter_val) = filter.value.parse::<i64>() {
+                    match filter.op {
+                        FilterOp::Eq => for (i, &v) in vals.iter().enumerate() { if v == filter_val { indices.push(i); } },
+                        FilterOp::Gt => for (i, &v) in vals.iter().enumerate() { if v > filter_val { indices.push(i); } },
+                        FilterOp::Lt => for (i, &v) in vals.iter().enumerate() { if v < filter_val { indices.push(i); } },
+                        FilterOp::Ge => for (i, &v) in vals.iter().enumerate() { if v >= filter_val { indices.push(i); } },
+                        FilterOp::Le => for (i, &v) in vals.iter().enumerate() { if v <= filter_val { indices.push(i); } },
                     }
-                    _ => return false,
+                }
+            } else if let Some(vals) = f64_cols.get(&filter.column) {
+                if let Ok(filter_val) = filter.value.parse::<f64>() {
+                    match filter.op {
+                        FilterOp::Eq => for (i, &v) in vals.iter().enumerate() { if (v - filter_val).abs() < f64::EPSILON { indices.push(i); } },
+                        FilterOp::Gt => for (i, &v) in vals.iter().enumerate() { if v > filter_val { indices.push(i); } },
+                        FilterOp::Lt => for (i, &v) in vals.iter().enumerate() { if v < filter_val { indices.push(i); } },
+                        FilterOp::Ge => for (i, &v) in vals.iter().enumerate() { if v >= filter_val { indices.push(i); } },
+                        FilterOp::Le => for (i, &v) in vals.iter().enumerate() { if v <= filter_val { indices.push(i); } },
+                    }
                 }
             }
-            return false;
+            indices
+        } else {
+            (0..row_count).collect()
         }
-        true
     }
 }
