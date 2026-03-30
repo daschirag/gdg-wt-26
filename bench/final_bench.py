@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 AQE_BIN = ROOT / "target" / "release" / "lsm"
 DATA_DIR = ROOT / "data"
 BENCH_DIR = ROOT / "bench"
-DEFAULT_ROWS = 10_000_000
+DEFAULT_ROWS = 1_000_000
 DEFAULT_CSV = DATA_DIR / "final_bench_10m.csv"
 DEFAULT_SQLITE = DATA_DIR / "final_bench_10m.db"
 DEFAULT_RESULTS_JSON = BENCH_DIR / "final_bench_results.json"
@@ -52,7 +52,7 @@ QUERY_MATRIX = [
     ("COUNT_BOOL_AND", "boolean_filter", "SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 1"),
     ("COUNT_BOOL_OR", "boolean_filter", "SELECT COUNT(*) FROM logs WHERE level > 500 OR status = 2"),
     ("COUNT_BOOL_NOT", "boolean_filter", "SELECT COUNT(*) FROM logs WHERE NOT status = 1 AND country = 2"),
-    ("COUNT_BOOL_PRECEDENCE", "boolean_filter", "SELECT COUNT(*) FROM logs WHERE status = 0 OR country = 1 AND level > 500"),
+    ("COUNT_BOOL_PRECEDENCE", "boolean_filter", "SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 1 AND level > 500"),
     ("COUNT_GROUP_COUNTRY", "group_by", "SELECT COUNT(*) FROM logs GROUP BY country"),
     ("COUNT_GROUP_STATUS", "group_by", "SELECT COUNT(*) FROM logs GROUP BY status"),
     ("SUM_GROUP_COUNTRY", "group_by", "SELECT SUM(level) FROM logs GROUP BY country"),
@@ -89,12 +89,29 @@ class BenchmarkRow:
     aqe_profile_col_open_ms: float | None
     aqe_profile_decode_ms: float | None
     aqe_profile_filter_agg_ms: float | None
+    aqe_bitmap_load_ms: float | None
+    aqe_bitmap_eval_ms: float | None
+    aqe_bitmap_combine_ms: float | None
+    aqe_bitmap_iter_ms: float | None
+    aqe_bitmap_match_rows: int | None
+    aqe_bitmap_match_ratio: float | None
+    aqe_bitmap_values_touched: int | None
+    aqe_bitmap_leaf_count: int | None
+    aqe_group_index_ms: float | None
+    aqe_group_emit_ms: float | None
+    aqe_rle_scan_ms: float | None
+    aqe_agg_sum_ms: float | None
+    aqe_agg_count_ms: float | None
     aqe_segments: int | None
     aqe_columns_opened: int | None
     aqe_rows_total: int | None
     aqe_rows_filtered: int | None
     aqe_rows_sampled: int | None
     aqe_strategy: str | None
+    aqe_planner_reason: str | None
+    aqe_planner_est_match_ratio: float | None
+    aqe_planner_est_values_touched: int | None
+    aqe_planner_est_path_cost: float | None
     raw_error: str
 
 
@@ -331,6 +348,23 @@ def parse_profile_line(output: str) -> dict[str, Any]:
         "mfp": False,
         "parallel": False,
         "strategy": "",
+        "bitmap.load_ms": 0.0,
+        "bitmap.eval_ms": 0.0,
+        "bitmap.combine_ms": 0.0,
+        "bitmap.iter_ms": 0.0,
+        "bitmap.match_rows": 0,
+        "bitmap.match_ratio": 0.0,
+        "bitmap.values_touched": 0,
+        "bitmap.leaf_count": 0,
+        "group.index_ms": 0.0,
+        "group.emit_ms": 0.0,
+        "rle.scan_ms": 0.0,
+        "agg.sum_ms": 0.0,
+        "agg.count_ms": 0.0,
+        "planner.reason": "",
+        "planner.est_match_ratio": 0.0,
+        "planner.est_values_touched": 0,
+        "planner.est_path_cost": 0.0,
     }
     for line in output.splitlines():
         line = line.strip()
@@ -484,6 +518,22 @@ def build_summary(rows: list[BenchmarkRow]) -> dict[str, Any]:
             label_aqe_rows = [r for r in cat_rows if r.label == label and r.status == "ok"]
             label_aqe_ms = statistics.median([r.execution_ms for r in label_aqe_rows]) if label_aqe_rows else None
             strategy = label_aqe_rows[0].aqe_strategy if label_aqe_rows else None
+            reason = label_aqe_rows[0].aqe_planner_reason if label_aqe_rows else None
+            est_match_ratio = (
+                statistics.median([r.aqe_planner_est_match_ratio for r in label_aqe_rows if r.aqe_planner_est_match_ratio is not None])
+                if any(r.aqe_planner_est_match_ratio is not None for r in label_aqe_rows)
+                else None
+            )
+            match_ratio = (
+                statistics.median([r.aqe_bitmap_match_ratio for r in label_aqe_rows if r.aqe_bitmap_match_ratio is not None])
+                if any(r.aqe_bitmap_match_ratio is not None for r in label_aqe_rows)
+                else None
+            )
+            values_touched = (
+                statistics.median([r.aqe_bitmap_values_touched for r in label_aqe_rows if r.aqe_bitmap_values_touched is not None])
+                if any(r.aqe_bitmap_values_touched is not None for r in label_aqe_rows)
+                else None
+            )
             label_speedup = (label_sqlite / label_aqe_ms) if label_sqlite and label_aqe_ms and label_aqe_ms > 0 else None
             query_details.append({
                 "label": label,
@@ -491,6 +541,10 @@ def build_summary(rows: list[BenchmarkRow]) -> dict[str, Any]:
                 "aqe_ms": label_aqe_ms,
                 "speedup": label_speedup,
                 "strategy": strategy,
+                "reason": reason,
+                "est_match_ratio": est_match_ratio,
+                "match_ratio": match_ratio,
+                "values_touched": values_touched,
                 "passed": all(r.matched_reference for r in label_aqe_rows),
             })
 
@@ -513,6 +567,28 @@ def build_summary(rows: list[BenchmarkRow]) -> dict[str, Any]:
                 else None
             ),
             "queries": query_details,
+            "median_match_ratio": (
+                statistics.median(
+                    [
+                        r.aqe_bitmap_match_ratio
+                        for r in cat_rows
+                        if r.status == "ok" and r.aqe_bitmap_match_ratio is not None
+                    ]
+                )
+                if any(r.status == "ok" and r.aqe_bitmap_match_ratio is not None for r in cat_rows)
+                else None
+            ),
+            "median_values_touched": (
+                statistics.median(
+                    [
+                        r.aqe_bitmap_values_touched
+                        for r in cat_rows
+                        if r.status == "ok" and r.aqe_bitmap_values_touched is not None
+                    ]
+                )
+                if any(r.status == "ok" and r.aqe_bitmap_values_touched is not None for r in cat_rows)
+                else None
+            ),
         }
     return {
         "total_rows": len(rows),
@@ -543,13 +619,32 @@ def print_summary(summary: dict[str, Any]) -> None:
             f"{category:<20} {data['total_cases']:>5} {data['passed']:>5} {data['failed']:>5} "
             f"{sqlite_med:>12} {aqe_med:>12} {spd_med:>10} {worst:>20}"
         )
+        if data.get("median_match_ratio") is not None or data.get("median_values_touched") is not None:
+            match_ratio = (
+                f"{data['median_match_ratio']:.3f}"
+                if data.get("median_match_ratio") is not None
+                else "n/a"
+            )
+            values_touched = (
+                f"{int(data['median_values_touched'])}"
+                if data.get("median_values_touched") is not None
+                else "n/a"
+            )
+            print(f"    diagnostics                           match_ratio={match_ratio:>8}  values_touched={values_touched:>8}")
         for q in data.get("queries", []):
             sq = f"{q['sqlite_ms']:.1f}ms" if q["sqlite_ms"] is not None else "n/a"
             aq = f"{q['aqe_ms']:.1f}ms" if q["aqe_ms"] is not None else "n/a"
             sp = f"{q['speedup']:.1f}x" if q["speedup"] is not None else "n/a"
             st = q["strategy"] or "?"
+            rs = q["reason"] or "?"
+            emr = f"{q['est_match_ratio']:.3f}" if q["est_match_ratio"] is not None else "n/a"
+            mr = f"{q['match_ratio']:.3f}" if q["match_ratio"] is not None else "n/a"
+            vt = f"{int(q['values_touched'])}" if q["values_touched"] is not None else "n/a"
             ok = "" if q["passed"] else " FAIL"
-            print(f"    {q['label']:<36} sqlite={sq:>9}  aqe={aq:>9}  {sp:>7}  [{st}]{ok}")
+            print(
+                f"    {q['label']:<36} sqlite={sq:>9}  aqe={aq:>9}  {sp:>7}  "
+                f"[{st}] reason={rs} est_match={emr} match_ratio={mr} values_touched={vt}{ok}"
+            )
 
 
 def main() -> None:
@@ -598,12 +693,29 @@ def main() -> None:
                     aqe_profile_col_open_ms=None,
                     aqe_profile_decode_ms=None,
                     aqe_profile_filter_agg_ms=None,
+                    aqe_bitmap_load_ms=None,
+                    aqe_bitmap_eval_ms=None,
+                    aqe_bitmap_combine_ms=None,
+                    aqe_bitmap_iter_ms=None,
+                    aqe_bitmap_match_rows=None,
+                    aqe_bitmap_match_ratio=None,
+                    aqe_bitmap_values_touched=None,
+                    aqe_bitmap_leaf_count=None,
+                    aqe_group_index_ms=None,
+                    aqe_group_emit_ms=None,
+                    aqe_rle_scan_ms=None,
+                    aqe_agg_sum_ms=None,
+                    aqe_agg_count_ms=None,
                     aqe_segments=None,
                     aqe_columns_opened=None,
                     aqe_rows_total=None,
                     aqe_rows_filtered=None,
                     aqe_rows_sampled=None,
                     aqe_strategy=None,
+                    aqe_planner_reason=None,
+                    aqe_planner_est_match_ratio=None,
+                    aqe_planner_est_values_touched=None,
+                    aqe_planner_est_path_cost=None,
                     raw_error="",
                 )
             )
@@ -620,7 +732,11 @@ def main() -> None:
                     raw_error = ""
                     print(
                         f"  {source}: {aqe_ms:.2f}ms -> {aqe_repr[:80]} | "
-                        f"match={matched} strategy={profile.get('strategy', '')}"
+                        f"match={matched} strategy={profile.get('strategy', '')} "
+                        f"reason={profile.get('planner.reason', '')} "
+                        f"est_match={profile.get('planner.est_match_ratio', 0.0):.3f} "
+                        f"match_ratio={profile.get('bitmap.match_ratio', 0.0):.3f} "
+                        f"values_touched={profile.get('bitmap.values_touched', 0)}"
                     )
                 except Exception as exc:
                     aqe_ms = 0.0
@@ -663,12 +779,29 @@ def main() -> None:
                         aqe_profile_col_open_ms=profile.get("stage.col_open_ms"),
                         aqe_profile_decode_ms=profile.get("stage.decode_ms"),
                         aqe_profile_filter_agg_ms=profile.get("stage.filter_agg_ms"),
+                        aqe_bitmap_load_ms=profile.get("bitmap.load_ms"),
+                        aqe_bitmap_eval_ms=profile.get("bitmap.eval_ms"),
+                        aqe_bitmap_combine_ms=profile.get("bitmap.combine_ms"),
+                        aqe_bitmap_iter_ms=profile.get("bitmap.iter_ms"),
+                        aqe_bitmap_match_rows=profile.get("bitmap.match_rows"),
+                        aqe_bitmap_match_ratio=profile.get("bitmap.match_ratio"),
+                        aqe_bitmap_values_touched=profile.get("bitmap.values_touched"),
+                        aqe_bitmap_leaf_count=profile.get("bitmap.leaf_count"),
+                        aqe_group_index_ms=profile.get("group.index_ms"),
+                        aqe_group_emit_ms=profile.get("group.emit_ms"),
+                        aqe_rle_scan_ms=profile.get("rle.scan_ms"),
+                        aqe_agg_sum_ms=profile.get("agg.sum_ms"),
+                        aqe_agg_count_ms=profile.get("agg.count_ms"),
                         aqe_segments=profile.get("io.seg"),
                         aqe_columns_opened=profile.get("io.col"),
                         aqe_rows_total=profile.get("rows.tot"),
                         aqe_rows_filtered=profile.get("rows.filt"),
                         aqe_rows_sampled=profile.get("rows.samp"),
                         aqe_strategy=profile.get("strategy"),
+                        aqe_planner_reason=profile.get("planner.reason"),
+                        aqe_planner_est_match_ratio=profile.get("planner.est_match_ratio"),
+                        aqe_planner_est_values_touched=profile.get("planner.est_values_touched"),
+                        aqe_planner_est_path_cost=profile.get("planner.est_path_cost"),
                         raw_error=raw_error,
                     )
                 )

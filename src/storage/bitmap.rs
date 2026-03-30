@@ -91,12 +91,39 @@ impl Bitmap {
         out
     }
 
+    pub fn and_inplace(&mut self, other: &Bitmap) {
+        let out_len = self.len.min(other.len);
+        self.len = out_len;
+        self.words.truncate(out_len.div_ceil(64));
+        for i in 0..self.words.len() {
+            self.words[i] &= other.words[i];
+        }
+    }
+
+    pub fn and_count(&self, other: &Bitmap) -> u64 {
+        let words = self.words.len().min(other.words.len());
+        let mut count = 0u64;
+        for i in 0..words {
+            count += (self.words[i] & other.words[i]).count_ones() as u64;
+        }
+        count
+    }
+
     pub fn or(&self, other: &Bitmap) -> Bitmap {
         let mut out = Bitmap::new(self.len.min(other.len));
         for i in 0..out.words.len() {
             out.words[i] = self.words[i] | other.words[i];
         }
         out
+    }
+
+    pub fn or_inplace(&mut self, other: &Bitmap) {
+        let out_len = self.len.min(other.len);
+        self.len = out_len;
+        self.words.truncate(out_len.div_ceil(64));
+        for i in 0..self.words.len() {
+            self.words[i] |= other.words[i];
+        }
     }
 
     pub fn not(&self) -> Bitmap {

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RowDisk {
@@ -15,6 +16,8 @@ pub struct ColumnMetadata {
     pub min: f64,
     pub max: f64,
     pub distinct_count: u64,
+    #[serde(default)]
+    pub run_count: u64,
     pub crc32: u32,
     #[serde(default)]
     pub indexes: Vec<ColumnIndexMetadata>,
@@ -37,7 +40,26 @@ impl ColumnMetadata {
     }
 }
 
-use std::collections::BTreeMap;
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GroupStatsData {
+    pub values: Vec<i64>,
+    pub counts: Vec<u64>,
+    #[serde(default)]
+    pub measure_sums: BTreeMap<String, Vec<f64>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RangeBlock {
+    pub row_start: u64,
+    pub row_count: u32,
+    pub start_value: i64,
+    pub end_value: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RangeBlocksData {
+    pub blocks: Vec<RangeBlock>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SSTableMetadata {

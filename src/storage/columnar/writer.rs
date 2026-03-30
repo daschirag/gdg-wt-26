@@ -2,7 +2,12 @@ use crate::errors::StorageError;
 use crate::storage::bitmap::{build_equality_bitmaps, write_bitmap_index};
 use crate::storage::columnar::encoding::delta::DeltaEncoder;
 use crate::storage::columnar::encoding::rle::{RleEncoder, RleRunI64};
-use crate::types::{ColumnIndexMetadata, RowDisk, SSTableMetadata, Value};
+use crate::storage::hll::{write_hll, HllSketch};
+use crate::types::{
+    ColumnIndexMetadata, GroupStatsData, RangeBlock, RangeBlocksData, RowDisk,
+    SSTableMetadata, Value,
+};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -11,9 +16,18 @@ pub struct ColumnarWriter;
 const RLE_I64_MAGIC: [u8; 4] = *b"RLI4";
 const RLE_I64_VERSION: u32 = 1;
 const BITMAP_MAX_DISTINCT: usize = 256;
+const RANGE_BLOCK_SIZE: usize = 1024;
 
-fn write_group_counts(path: &Path, values: &[i64], counts: &[u64]) -> Result<(), StorageError> {
-    let bytes = bincode::serialize(&(values, counts)).map_err(|e| {
+fn write_group_stats(path: &Path, data: &GroupStatsData) -> Result<(), StorageError> {
+    let bytes = bincode::serialize(data).map_err(|e| {
+        StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
+    })?;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+fn write_range_blocks(path: &Path, data: &RangeBlocksData) -> Result<(), StorageError> {
+    let bytes = bincode::serialize(data).map_err(|e| {
         StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
     })?;
     fs::write(path, bytes)?;
@@ -75,6 +89,19 @@ impl ColumnarWriter {
         let mut column_metadata = std::collections::BTreeMap::new();
         let mut min_ts = i64::MAX;
         let mut max_ts = i64::MIN;
+        let numeric_measure_names: Vec<String> = config
+            .schema
+            .columns
+            .iter()
+            .filter(|col| {
+                matches!(
+                    col.r#type.as_str(),
+                    "i64" | "u64" | "u32" | "i32" | "u16" | "i16" | "u8" | "i8" | "f64" | "f32"
+                )
+            })
+            .map(|col| col.name.clone())
+            .collect();
+
         for (i, col_schema) in config.schema.columns.iter().enumerate() {
             let col_data = &columns[i];
             let file_name = format!("{}.col", col_schema.name);
@@ -136,10 +163,12 @@ impl ColumnarWriter {
                 .unwrap_or(false);
 
             // Heuristic Selection
+            let mut rle_run_count = 0u64;
             let (encoding, bytes) = if distinct_count < row_count / 10 && row_count > 0 {
                 // Low cardinality -> RLE
                 let i64_data = i64_data.clone().unwrap_or_default();
                 let encoded = RleEncoder::encode_i64(&i64_data);
+                rle_run_count = encoded.len() as u64;
                 ("rle".to_string(), serialize_rle_i64(&encoded))
             } else if monotonic_i64 {
                 // Monotonic-like -> Delta
@@ -199,6 +228,19 @@ impl ColumnarWriter {
 
             let indexes = if let Some(i64_data) = i64_data.as_ref() {
                 let mut indexes = Vec::new();
+                let mut hll = HllSketch::default();
+                for value in i64_data {
+                    hll.add_i64(*value);
+                }
+                let hll_file = format!("{}.hll", col_schema.name);
+                write_hll(&segment_path.join(&hll_file), &hll)?;
+                indexes.push(ColumnIndexMetadata {
+                    kind: "hll".to_string(),
+                    file: hll_file,
+                    values: Vec::new(),
+                    row_count: i64_data.len() as u64,
+                    supports: vec!["distinct_estimate".to_string(), "planner".to_string()],
+                });
                 if distinct_count > 0 && distinct_count <= BITMAP_MAX_DISTINCT {
                     let mut values: Vec<i64> = distinct_values.iter().copied().collect();
                     values.sort_unstable();
@@ -229,15 +271,86 @@ impl ColumnarWriter {
                         .iter()
                         .map(|value| bitmaps.get(value).map(|bm| bm.count_ones()).unwrap_or(0))
                         .collect();
-                    let group_file = format!("{}.group", col_schema.name);
-                    let group_path = segment_path.join(&group_file);
-                    write_group_counts(&group_path, &ordered_values, &counts)?;
+
+                    let mut measure_sums: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+                    let value_pos: BTreeMap<i64, usize> = ordered_values
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .map(|(idx, value)| (value, idx))
+                        .collect();
+                    for measure in &numeric_measure_names {
+                        let Some(measure_idx) = config.schema.col_index(measure) else {
+                            continue;
+                        };
+                        let mut sums = vec![0.0; ordered_values.len()];
+                        for row in &rows {
+                            let dim_value = match row.values.get(i) {
+                                Some(Value::Int(v)) => *v,
+                                Some(Value::Float(v)) => *v as i64,
+                                _ => 0,
+                            };
+                            let Some(slot) = value_pos.get(&dim_value).copied() else {
+                                continue;
+                            };
+                            let measure_value = match row.values.get(measure_idx) {
+                                Some(Value::Int(v)) => *v as f64,
+                                Some(Value::Float(v)) => *v,
+                                _ => 0.0,
+                            };
+                            sums[slot] += measure_value;
+                        }
+                        measure_sums.insert(measure.clone(), sums);
+                    }
+                    let stats_file = format!("{}.stats", col_schema.name);
+                    let stats_path = segment_path.join(&stats_file);
+                    write_group_stats(
+                        &stats_path,
+                        &GroupStatsData {
+                            values: ordered_values.clone(),
+                            counts: counts.clone(),
+                            measure_sums,
+                        },
+                    )?;
                     indexes.push(ColumnIndexMetadata {
-                        kind: "group_counts".to_string(),
-                        file: group_file,
-                        values: ordered_values,
+                        kind: "group_stats".to_string(),
+                        file: stats_file,
+                        values: ordered_values.clone(),
                         row_count: i64_data.len() as u64,
-                        supports: vec!["count".to_string(), "group_by".to_string()],
+                        supports: vec![
+                            "count".to_string(),
+                            "sum".to_string(),
+                            "avg".to_string(),
+                            "group_by".to_string(),
+                        ],
+                    });
+                }
+                if monotonic_i64 {
+                    let mut blocks = Vec::new();
+                    for block_start in (0..i64_data.len()).step_by(RANGE_BLOCK_SIZE) {
+                        let block_end = (block_start + RANGE_BLOCK_SIZE).min(i64_data.len());
+                        blocks.push(RangeBlock {
+                            row_start: block_start as u64,
+                            row_count: (block_end - block_start) as u32,
+                            start_value: i64_data[block_start],
+                            end_value: i64_data[block_end - 1],
+                        });
+                    }
+                    let range_file = format!("{}.rangeblk", col_schema.name);
+                    let range_path = segment_path.join(&range_file);
+                    write_range_blocks(&range_path, &RangeBlocksData { blocks })?;
+                    indexes.push(ColumnIndexMetadata {
+                        kind: "range_blocks".to_string(),
+                        file: range_file,
+                        values: Vec::new(),
+                        row_count: i64_data.len() as u64,
+                        supports: vec![
+                            "count".to_string(),
+                            ">".to_string(),
+                            "<".to_string(),
+                            ">=".to_string(),
+                            "<=".to_string(),
+                        ],
                     });
                 }
                 indexes
@@ -253,6 +366,7 @@ impl ColumnarWriter {
                     min: if col_min == f64::MAX { 0.0 } else { col_min },
                     max: if col_max == f64::MIN { 0.0 } else { col_max },
                     distinct_count: distinct_count as u64,
+                    run_count: rle_run_count,
                     crc32,
                     indexes,
                 },

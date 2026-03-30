@@ -2,7 +2,8 @@ use crate::errors::StorageError;
 use crate::storage::bitmap::{read_bitmap_index, Bitmap};
 use crate::storage::columnar::encoding::delta::{DeltaEncoded, DeltaEncoder};
 use crate::storage::columnar::encoding::rle::{RleEncoder, RleRun, RleRunI64};
-use crate::types::{ColumnMetadata, SSTableMetadata};
+use crate::storage::hll::{read_hll, HllSketch};
+use crate::types::{ColumnMetadata, GroupStatsData, RangeBlocksData, SSTableMetadata};
 use crate::utils::aligned_vec::AlignedVec;
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
@@ -222,24 +223,77 @@ impl ColumnarReader {
         read_bitmap_index(&self.path.join(&bitmap_meta.file))
     }
 
-    pub fn read_group_counts(&self, name: &str) -> Result<Vec<(i64, u64)>, StorageError> {
+    pub fn read_group_stats(&self, name: &str) -> Result<GroupStatsData, StorageError> {
         let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
             StorageError::ReadError(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "Column not found",
             ))
         })?;
-        let group_meta = col_meta.index("group_counts").ok_or_else(|| {
+        let stats_meta = col_meta.index("group_stats").ok_or_else(|| {
             StorageError::ReadError(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Group counts index not available",
+                "Group stats index not available",
             ))
         })?;
-        let bytes = fs::read(self.path.join(&group_meta.file))?;
-        let (values, counts): (Vec<i64>, Vec<u64>) = bincode::deserialize(&bytes).map_err(|e| {
+        let bytes = fs::read(self.path.join(&stats_meta.file))?;
+        bincode::deserialize(&bytes).map_err(|e| {
             StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })
+    }
+
+    pub fn read_range_blocks(&self, name: &str) -> Result<RangeBlocksData, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
         })?;
-        Ok(values.into_iter().zip(counts).collect())
+        let meta = col_meta.index("range_blocks").ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Range blocks index not available",
+            ))
+        })?;
+        let bytes = fs::read(self.path.join(&meta.file))?;
+        bincode::deserialize(&bytes).map_err(|e| {
+            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })
+    }
+
+    pub fn read_hll(&self, name: &str) -> Result<HllSketch, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
+        })?;
+        let meta = col_meta.index("hll").ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "HLL index not available",
+            ))
+        })?;
+        read_hll(&self.path.join(&meta.file))
+    }
+
+    pub fn read_delta_encoded_i64(&self, name: &str) -> Result<DeltaEncoded<i64>, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
+        })?;
+        if col_meta.encoding != "delta" {
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "not a delta column",
+            )));
+        }
+        let bytes = fs::read(self.path.join(format!("{}.col", name)))?;
+        bincode::deserialize(&bytes).map_err(|e| {
+            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })
     }
 
     pub fn open_column(&self, col_name: &str) -> Result<ColumnFileHandle, StorageError> {
