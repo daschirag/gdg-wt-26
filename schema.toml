@@ -16,3 +16,7 @@ type = "u8"
 [[columns]]
 name = "timestamp"
 type = "u64"
+
+[[columns]]
+name = "level"
+type = "u8"

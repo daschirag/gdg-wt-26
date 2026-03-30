@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use crate::types::RowDisk;
+use crate::types::{RowDisk, Value};
 
 pub struct Memtable {
     pub data: BTreeMap<u64, RowDisk>,
@@ -13,7 +13,9 @@ impl Memtable {
     }
 
     pub fn insert(&mut self, row: RowDisk) {
-        self.data.insert(row.user_id, row);
+        if let Some(Value::Int(uid)) = row.values.get(0) {
+            self.data.insert(*uid as u64, row);
+        }
     }
 
     pub fn get(&self, user_id: u64) -> Option<&RowDisk> {

@@ -15,17 +15,18 @@ impl Parser {
             return Err(QueryError::UnsupportedOperation("Only SELECT is supported".to_string()));
         }
 
-        let agg_str = tokens[1].to_uppercase();
-        let aggregation = if agg_str == "COUNT(*)" {
+        let agg_raw = tokens[1];
+        let agg_upper = agg_raw.to_uppercase();
+        let aggregation = if agg_upper == "COUNT(*)" {
             Aggregation::Count
-        } else if agg_str.starts_with("SUM(") && agg_str.ends_with(")") {
-            let col = agg_str[4..agg_str.len()-1].to_string();
+        } else if agg_upper.starts_with("SUM(") && agg_upper.ends_with(")") {
+            let col = agg_raw[4..agg_raw.len()-1].to_string();
             Aggregation::Sum(col)
-        } else if agg_str.starts_with("AVG(") && agg_str.ends_with(")") {
-            let col = agg_str[4..agg_str.len()-1].to_string();
+        } else if agg_upper.starts_with("AVG(") && agg_upper.ends_with(")") {
+            let col = agg_raw[4..agg_raw.len()-1].to_string();
             Aggregation::Avg(col)
         } else {
-            return Err(QueryError::UnsupportedOperation(format!("Unsupported aggregation: {}", agg_str)));
+            return Err(QueryError::UnsupportedOperation(format!("Unsupported aggregation: {}", agg_raw)));
         };
 
         if tokens[2].to_uppercase() != "FROM" {

@@ -5,6 +5,7 @@ pub mod datagen;
 pub mod storage;
 pub mod query;
 pub mod aqp;
+pub mod repl;
 
 pub use types::*;
 pub use errors::*;

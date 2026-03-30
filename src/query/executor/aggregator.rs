@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use crate::types::{RowDisk, AggregateValue, Confidence, get_value, Value};
 use crate::query::ast::Aggregation;
+use crate::config::Config;
 
-pub struct Aggregator {
+pub struct Aggregator<'a> {
     pub aggregation: Aggregation,
     pub group_by: Option<String>,
     pub min_group_rows: u64,
+    pub config: &'a Config,
 }
 
-impl Aggregator {
-    pub fn new(aggregation: Aggregation, group_by: Option<String>, min_group_rows: u64) -> Self {
-        Self { aggregation, group_by, min_group_rows }
+impl<'a> Aggregator<'a> {
+    pub fn new(aggregation: Aggregation, group_by: Option<String>, min_group_rows: u64, config: &'a Config) -> Self {
+        Self { aggregation, group_by, min_group_rows, config }
     }
 
     pub fn aggregate(&self, rows: &[RowDisk]) -> AggregateValue {
@@ -29,7 +31,7 @@ impl Aggregator {
             Aggregation::Count => AggregateValue::Scalar(rows.len() as f64),
             Aggregation::Sum(col) => {
                 let sum: f64 = rows.iter()
-                    .filter_map(|r| get_value(r, col))
+                    .filter_map(|r| get_value(r, col, self.config))
                     .filter_map(|v| match v {
                         Value::Int(i) => Some(i as f64),
                         Value::Float(f) => Some(f),
@@ -42,7 +44,7 @@ impl Aggregator {
                 let mut sum = 0.0;
                 let mut count = 0;
                 for row in rows {
-                    if let Some(v) = get_value(row, col) {
+                    if let Some(v) = get_value(row, col, self.config) {
                         match v {
                             Value::Int(i) => { sum += i as f64; count += 1; }
                             Value::Float(f) => { sum += f; count += 1; }
@@ -63,7 +65,7 @@ impl Aggregator {
         let mut group_map: HashMap<String, (f64, u64)> = HashMap::new();
 
         for row in rows {
-            if let Some(group_val) = get_value(row, group_col) {
+            if let Some(group_val) = get_value(row, group_col, self.config) {
                 let key = match group_val {
                     Value::Int(i) => i.to_string(),
                     Value::Float(f) => f.to_string(),
@@ -78,7 +80,7 @@ impl Aggregator {
                         entry.1 += 1;
                     }
                     Aggregation::Sum(col) => {
-                        if let Some(v) = get_value(row, col) {
+                        if let Some(v) = get_value(row, col, self.config) {
                             match v {
                                 Value::Int(i) => { entry.0 += i as f64; entry.1 += 1; }
                                 Value::Float(f) => { entry.0 += f; entry.1 += 1; }
@@ -87,7 +89,7 @@ impl Aggregator {
                         }
                     }
                     Aggregation::Avg(col) => {
-                        if let Some(v) = get_value(row, col) {
+                        if let Some(v) = get_value(row, col, self.config) {
                             match v {
                                 Value::Int(i) => { entry.0 += i as f64; entry.1 += 1; }
                                 Value::Float(f) => { entry.0 += f; entry.1 += 1; }
