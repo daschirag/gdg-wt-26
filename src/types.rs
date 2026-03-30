@@ -13,6 +13,7 @@ pub struct SSTableMetadata {
     pub min_ts: i64,
     pub max_ts: i64,
     pub schema_version: u32,
+    pub is_compacted: bool,
     pub sums: std::collections::HashMap<String, f64>,
     pub column_encodings: std::collections::HashMap<String, String>,
 }
