@@ -11,6 +11,7 @@ impl RowSampler {
         seed: u64,
         _min_group_rows: u64,
         group_by: &Option<String>,
+        config: &crate::config::Config,
     ) -> (Vec<RowDisk>, Vec<Confidence>) {
         let mut sampled_rows = Vec::new();
         let mut group_counts = std::collections::HashMap::new();
@@ -25,7 +26,7 @@ impl RowSampler {
 
             if include {
                 if let Some(group_col) = group_by {
-                    if let Some(val) = get_value(&row, group_col) {
+                    if let Some(val) = get_value(&row, group_col, config) {
                         let key = format!("{:?}", val);
                         let count = group_counts.entry(key).or_insert(0);
                         *count += 1;
