@@ -1,12 +1,10 @@
-use crate::aqp::sampler::col_sampler::ColumnSampler;
-use crate::errors::QueryError;
-use crate::query::ast::{Aggregation, FilterOp, QueryPlan};
-use crate::storage::columnar::encoding::rle::RleEncoder;
+use crate::errors::{QueryError, StorageError};
+use crate::query::ast::{Aggregation, Filter, FilterOp, PredicateExpr, QueryPlan};
+use crate::storage::bitmap::Bitmap;
+use crate::storage::columnar::encoding::rle::RleRunI64;
 use crate::storage::columnar::reader::ColumnarReader;
-use crate::types::SSTableMetadata;
-use crate::types::{AggregateValue, ConfidenceFlag, QueryResult, StoragePath};
-use rand::prelude::*;
-use rayon::prelude::*;
+use crate::types::{AggregateValue, ConfidenceFlag, QueryResult, SSTableMetadata, StoragePath};
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -20,14 +18,24 @@ pub struct SegmentEntry {
     pub metadata: SSTableMetadata,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum ScanStrategy {
-    RunAggregate,
-    LazyGroupDecode,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ColumnStrategy {
+    MetadataFastPath,
+    GroupCountFastPath,
+    BitmapScalar,
+    BitmapGroup,
+    RleScan,
+    // COUNT with OR filter: one arm has bitmap_eq index, other is RLE-only.
+    // Uses inclusion-exclusion: count(A) + count(B) - count(A AND B).
+    InclusionExclusionCount,
+    // COUNT with Or(bitmap_leaf, And(bitmap_leaf, rle_leaf)) shape.
+    // Uses inclusion-exclusion without ever materializing the rle column bitmap.
+    InclusionExclusionCount3,
+    ScanFallback,
 }
 
 impl ColumnarPipeline {
-    pub fn new(segments: Vec<String>) -> Result<Self, crate::errors::StorageError> {
+    pub fn new(segments: Vec<String>) -> Result<Self, StorageError> {
         let segments = segments
             .into_iter()
             .enumerate()
@@ -38,7 +46,7 @@ impl ColumnarPipeline {
                     metadata: reader.metadata,
                 })
             })
-            .collect::<Result<Vec<_>, crate::errors::StorageError>>()?;
+            .collect::<Result<Vec<_>, StorageError>>()?;
         Ok(Self { segments })
     }
 
@@ -50,413 +58,457 @@ impl ColumnarPipeline {
         _mask: Option<&std::collections::HashSet<u64>>,
         _skip_dedup: bool,
     ) -> Result<QueryResult, QueryError> {
-        let overall_profile = crate::types::QueryProfile::default();
         let start_total = Instant::now();
+        let strategy = self.choose_strategy(plan);
+        let mut profile = crate::types::QueryProfile::default();
 
-        let mut stage_col_open_ms = 0.0;
-        let mut stage_decode_ns = 0u128;
-        let mut stage_aggregation_ns = 0u128;
-        let mut io_segments_opened = 0u64;
-        let mut io_col_files_opened = 0u64;
-        let mut io_bytes_read = 0u64;
-        let mut io_row_groups_sampled = 0u64;
-        let mut rows_total_possible = 0u64;
-        let mut rows_after_filter = 0u64;
-        let mut scalar_sum = 0.0;
-        let mut scalar_count = 0u64;
-        let mut group_sums_u8: [f64; 256] = [0.0; 256];
-        let mut group_counts_u8: [u64; 256] = [0; 256];
-        let mut total_rows_read = 0;
-        let global_total_rows_possible: u64 = self
-            .segments
-            .iter()
-            .map(|segment| segment.metadata.row_count)
-            .sum();
-
-        let filter_col_idx = plan.filter.as_ref().and_then(|f| {
-            config
-                .schema
-                .columns
-                .iter()
-                .position(|c| c.name == f.column)
-        });
-        let group_col_idx = plan
-            .group_by
-            .as_ref()
-            .and_then(|g| config.schema.columns.iter().position(|c| &c.name == g));
-        let agg_col_idx = match &plan.aggregation {
-            Aggregation::Count => None,
-            Aggregation::Sum(col) | Aggregation::Avg(col) => {
-                config.schema.columns.iter().position(|c| &c.name == col)
-            }
-        };
-
-        if plan.filter.is_none() && plan.group_by.is_none() {
-            let mut fast_count = 0u64;
-            let mut fast_sum = 0.0;
-            let mut possible = true;
+        if strategy == ColumnStrategy::MetadataFastPath {
+            let mut total_count = 0u64;
+            let mut total_sum = 0.0;
             for segment in &self.segments {
-                let r_start = Instant::now();
-                let reader = ColumnarReader {
-                    path: segment.path.clone(),
-                    metadata: segment.metadata.clone(),
-                    seg_idx: 0,
-                };
-                stage_col_open_ms += r_start.elapsed().as_secs_f64() * 1000.0;
-                io_segments_opened += 1;
-                fast_count += reader.metadata.row_count;
-                match &plan.aggregation {
-                    Aggregation::Count => {}
-                    Aggregation::Sum(col) | Aggregation::Avg(col) => {
-                        if let Some(c) = reader.metadata.columns.get(col) {
-                            fast_sum += c.sum;
-                        } else if let Some(pos) = agg_col_idx {
-                            let alt_key = format!("col_{}", pos);
-                            if let Some(c) = reader.metadata.columns.get(&alt_key) {
-                                fast_sum += c.sum;
-                            } else {
-                                possible = false;
-                                break;
-                            }
-                        } else {
-                            possible = false;
-                            break;
-                        }
-                    }
+                total_count += segment.metadata.row_count;
+                if let Aggregation::Sum(col) | Aggregation::Avg(col) = &plan.aggregation {
+                    total_sum += segment.metadata.columns.get(col).map(|c| c.sum).unwrap_or(0.0);
                 }
             }
-            if possible {
-                let value = match &plan.aggregation {
-                    Aggregation::Count => AggregateValue::Scalar(fast_count as f64),
-                    Aggregation::Sum(_) => AggregateValue::Scalar(fast_sum),
-                    Aggregation::Avg(_) => {
-                        if fast_count > 0 {
-                            AggregateValue::Scalar(fast_sum / fast_count as f64)
-                        } else {
-                            AggregateValue::Empty
-                        }
+            let value = match &plan.aggregation {
+                Aggregation::Count => AggregateValue::Scalar(total_count as f64),
+                Aggregation::Sum(_) => AggregateValue::Scalar(total_sum),
+                Aggregation::Avg(_) => {
+                    if total_count > 0 {
+                        AggregateValue::Scalar(total_sum / total_count as f64)
+                    } else {
+                        AggregateValue::Empty
                     }
-                };
-                self.print_profile(
-                    plan,
-                    start_total,
-                    stage_col_open_ms,
-                    0,
-                    0,
-                    io_segments_opened,
-                    0,
-                    0,
-                    0,
-                    fast_count,
-                    0,
-                    0,
-                    1.0,
-                    1.0,
-                    true,
-                    false,
-                );
-                return Ok(QueryResult {
-                    value,
-                    confidence: ConfidenceFlag::High,
-                    storage_path: StoragePath::Columnar,
-                    rows_scanned: 0,
-                    sampling_rate: 1.0,
-                    estimated_variance: 0.0,
-                    warnings: vec!["Metadata Fast-Path: Result is exact".to_string()],
-                    profile: overall_profile,
-                });
-            }
+                }
+            };
+            self.print_profile(plan, start_total, 0.0, 0.0, 0.0, self.segments.len() as u64, 0, total_count, 0, 0, 1.0, "metadata");
+            return Ok(QueryResult {
+                value,
+                confidence: ConfidenceFlag::Exact,
+                warnings: vec!["Metadata Fast-Path: Result is exact".to_string()],
+                storage_path: StoragePath::Columnar,
+                rows_scanned: 0,
+                sampling_rate: 1.0,
+                estimated_variance: 0.0,
+                profile,
+            });
         }
 
-        let strategy = if plan.filter.is_some() {
-            ScanStrategy::LazyGroupDecode
-        } else {
-            ScanStrategy::RunAggregate
-        };
-        let sampling_rate = crate::aqp::accuracy::AccuracyCalculator::calculate_sampling_rate(
-            config.accuracy_target,
-            config.k,
-        );
-        let sst_rate = sampling_rate.sqrt();
-        let row_rate = sampling_rate.sqrt();
+        let mut stage_open_ms = 0.0;
+        let mut stage_filter_ms = 0.0;
+        let mut stage_agg_ms = 0.0;
+        let mut io_col = 0u64;
+        let mut rows_total = 0u64;
+        let mut rows_matched = 0u64;
+        let mut rows_scanned = 0u64;
 
-        let sampled_segments: Vec<usize> = if sst_rate >= 1.0 {
-            (0..self.segments.len()).collect()
-        } else {
-            let mut rng = rand::prelude::StdRng::seed_from_u64(config.seed);
-            let n = ((sst_rate * self.segments.len() as f64).floor() as usize)
-                .max(1)
-                .min(self.segments.len());
-            let mut indices: Vec<usize> = (0..self.segments.len()).collect();
-            indices.shuffle(&mut rng);
-            indices.into_iter().take(n).collect()
-        };
+        let mut scalar_sum = 0.0;
+        let mut scalar_count = 0u64;
+        let mut grouped: BTreeMap<String, (f64, u64)> = BTreeMap::new();
 
-        struct SegmentScanResult {
-            total_rows_read: usize,
-            rows_after_filter: u64,
-            rows_total_possible: u64,
-            scalar_sum: f64,
-            scalar_count: u64,
-            group_sums_u8: [f64; 256],
-            group_counts_u8: [u64; 256],
-            io_bytes_read: u64,
-            io_col_files_opened: u64,
-            io_segments_opened: u64,
-            io_row_groups_eval: u64,
-            io_row_groups_samp: u64,
-            duration_ms: f64,
-            stage_agg_ns: u128,
-            stage_col_open_ns: u128,
-            stage_decode_ns: u128,
-            stage_filter_ns: u128,
-        }
+        for (seg_idx, segment) in self.segments.iter().enumerate() {
+            let reader = ColumnarReader {
+                path: segment.path.clone(),
+                metadata: segment.metadata.clone(),
+                seg_idx: seg_idx as u64,
+            };
+            rows_total += reader.metadata.row_count;
 
-        let filter_i64_val = plan
-            .filter
-            .as_ref()
-            .and_then(|f| f.value.parse::<i64>().ok());
+            match strategy {
+                ColumnStrategy::GroupCountFastPath => {
+                    let open_t = Instant::now();
+                    let group_col = plan
+                        .group_by
+                        .as_ref()
+                        .expect("group count fast path requires group_by");
+                    let group_counts = reader.read_group_counts(group_col)?;
+                    stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
+                    io_col += 1;
 
-        let results: Vec<SegmentScanResult> = sampled_segments
-            .par_iter()
-            .map(|&seg_idx| {
-                let mut res = SegmentScanResult {
-                    total_rows_read: 0,
-                    rows_after_filter: 0,
-                    rows_total_possible: 0,
-                    scalar_sum: 0.0,
-                    scalar_count: 0,
-                    group_sums_u8: [0.0; 256],
-                    group_counts_u8: [0; 256],
-                    io_bytes_read: 0,
-                    io_col_files_opened: 0,
-                    io_segments_opened: 0,
-                    io_row_groups_eval: 0,
-                    io_row_groups_samp: 0,
-                    duration_ms: 0.0,
-                    stage_agg_ns: 0,
-                    stage_col_open_ns: 0,
-                    stage_decode_ns: 0,
-                    stage_filter_ns: 0,
-                };
-                let start_seg = Instant::now();
-                let segment = match self.segments.get(seg_idx) {
-                    Some(segment) => segment,
-                    None => return res,
-                };
-                let reader = ColumnarReader {
-                    path: segment.path.clone(),
-                    metadata: segment.metadata.clone(),
-                    seg_idx: seg_idx as u64,
-                };
-                res.io_segments_opened += 1;
-                res.rows_total_possible = reader.metadata.row_count;
+                    let agg_t = Instant::now();
+                    for (value, count) in group_counts {
+                        if count == 0 {
+                            continue;
+                        }
+                        let entry = grouped.entry(value.to_string()).or_insert((0.0, 0));
+                        entry.0 += count as f64;
+                        entry.1 += count;
+                        rows_matched += count;
+                        rows_scanned += count;
+                    }
+                    stage_agg_ms += agg_t.elapsed().as_secs_f64() * 1000.0;
+                }
+                ColumnStrategy::BitmapScalar | ColumnStrategy::BitmapGroup => {
+                    let open_t = Instant::now();
+                    let mut bitmap_cache: HashMap<String, HashMap<i64, Bitmap>> = HashMap::new();
+                    let filter_bitmap = self.eval_bitmap_expr(plan.filter.as_ref(), &reader, &mut bitmap_cache)?;
+                    stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
+                    io_col += bitmap_cache.len() as u64;
+                    let effective_bitmap = filter_bitmap.unwrap_or_else(|| Bitmap::full(reader.metadata.row_count as usize));
+                    rows_matched += effective_bitmap.count_ones();
 
-                if strategy == ScanStrategy::RunAggregate {
-                    if let Some(g_idx) = group_col_idx {
-                        let col_name = &config.schema.columns[g_idx].name;
-                        let deser_t = Instant::now();
-                        if let Ok(mut key_fh) = reader.open_column(col_name) {
-                            let key_runs = key_fh.get_runs_i64();
-                            res.stage_col_open_ns = deser_t.elapsed().as_nanos();
-                            res.io_col_files_opened += 1;
+                    let agg_t = Instant::now();
+                    if strategy == ColumnStrategy::BitmapGroup {
+                        let group_col = plan.group_by.as_ref().expect("bitmap group strategy needs group_by");
+                        let group_bitmaps = if let Some(existing) = bitmap_cache.get(group_col) {
+                            existing.clone()
+                        } else {
+                            let loaded = reader.read_bitmap_index(group_col)?;
+                            io_col += 1;
+                            bitmap_cache.insert(group_col.clone(), loaded.clone());
+                            loaded
+                        };
+                        let agg_i64 = match &plan.aggregation {
+                            Aggregation::Sum(col) | Aggregation::Avg(col) => {
+                                io_col += 1;
+                                Some(reader.read_column_i64(col)?)
+                            }
+                            _ => None,
+                        };
+
+                        for (value, group_bitmap) in group_bitmaps {
+                            let selected = group_bitmap.and(&effective_bitmap);
+                            let count = selected.count_ones();
+                            if count == 0 {
+                                continue;
+                            }
+                            let entry = grouped.entry(value.to_string()).or_insert((0.0, 0));
                             match &plan.aggregation {
                                 Aggregation::Count => {
-                                    let agg_t = Instant::now();
-                                    let (counts, sampled) =
-                                        RleEncoder::aggregate_counts_i64_sampled(
-                                            &key_runs, row_rate,
-                                        );
-                                    res.stage_agg_ns = agg_t.elapsed().as_nanos();
-                                    res.group_counts_u8.copy_from_slice(&counts);
-                                    res.scalar_count = counts.iter().sum::<u64>();
-                                    res.total_rows_read = sampled as usize;
+                                    entry.0 += count as f64;
+                                    entry.1 += count;
                                 }
-                                _ => {
-                                    if let Some(a_idx) = agg_col_idx {
-                                        let deser2_t = Instant::now();
-                                        if let Ok(mut val_fh) =
-                                            reader.open_column(&config.schema.columns[a_idx].name)
-                                        {
-                                            let val_runs = val_fh.get_runs_i64();
-                                            res.stage_col_open_ns += deser2_t.elapsed().as_nanos();
-                                            res.io_col_files_opened += 1;
-                                            let agg_t = Instant::now();
-                                            let (sums, counts, sampled) =
-                                                RleEncoder::aggregate_sum_by_u8_i64_sampled(
-                                                    key_runs, val_runs, row_rate,
-                                                );
-                                            res.stage_agg_ns = agg_t.elapsed().as_nanos();
-                                            res.group_sums_u8.copy_from_slice(&sums);
-                                            res.group_counts_u8.copy_from_slice(&counts);
-                                            res.scalar_count = counts.iter().sum::<u64>();
-                                            res.scalar_sum = sums.iter().sum::<f64>();
-                                            res.total_rows_read = sampled as usize;
+                                Aggregation::Sum(_) | Aggregation::Avg(_) => {
+                                    let mut seg_sum = 0.0;
+                                    if let Some(values) = &agg_i64 {
+                                        for idx in selected.iter_ones() {
+                                            seg_sum += values[idx] as f64;
+                                        }
+                                    }
+                                    entry.0 += seg_sum;
+                                    entry.1 += count;
+                                }
+                            }
+                            rows_scanned += count;
+                        }
+                    } else {
+                        match &plan.aggregation {
+                            Aggregation::Count => {
+                                scalar_count += effective_bitmap.count_ones();
+                                rows_scanned += effective_bitmap.count_ones();
+                            }
+                            Aggregation::Sum(col) | Aggregation::Avg(col) => {
+                                io_col += 1;
+                                let seg_count = effective_bitmap.count_ones();
+                                let values = reader.read_column_i64(col)?;
+                                for idx in effective_bitmap.iter_ones() {
+                                    scalar_sum += values[idx] as f64;
+                                }
+                                scalar_count += seg_count;
+                                rows_scanned += seg_count;
+                            }
+                        }
+                    }
+                    stage_agg_ms += agg_t.elapsed().as_secs_f64() * 1000.0;
+                }
+                ColumnStrategy::InclusionExclusionCount => {
+                    // COUNT(A OR B) = COUNT(A) + COUNT(B) - COUNT(A AND B)
+                    // A: bitmap-indexed column, B: RLE column (no bitmap index)
+                    let (bitmap_filter, rle_filter) = self
+                        .split_or_for_inclusion_exclusion(plan.filter.as_ref().unwrap())
+                        .expect("strategy guarantees split");
+                    let bmp_threshold = bitmap_filter.value.parse::<i64>().unwrap_or(0);
+                    let rle_threshold = rle_filter.value.parse::<i64>().unwrap_or(0);
+
+                    let open_t = Instant::now();
+                    let bitmaps = reader.read_bitmap_index(&bitmap_filter.column)?;
+                    io_col += 1;
+                    let runs = reader.read_column_runs_i64(&rle_filter.column)?;
+                    io_col += 1;
+                    stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
+
+                    let agg_t = Instant::now();
+                    // count(A): sum bitmaps for values satisfying bitmap_filter.op
+                    let mut count_a = 0u64;
+                    let mut matching_bitmaps: Vec<&Bitmap> = Vec::new();
+                    for (val, bmap) in &bitmaps {
+                        let include = match &bitmap_filter.op {
+                            FilterOp::Eq => *val == bmp_threshold,
+                            FilterOp::Gt => *val > bmp_threshold,
+                            FilterOp::Lt => *val < bmp_threshold,
+                            FilterOp::Ge => *val >= bmp_threshold,
+                            FilterOp::Le => *val <= bmp_threshold,
+                        };
+                        if include {
+                            count_a += bmap.count_ones();
+                            matching_bitmaps.push(bmap);
+                        }
+                    }
+                    // count(B): RLE COUNT — O(runs), no bitmap materialization
+                    let mut count_b = 0u64;
+                    for run in &runs {
+                        let matches = match &rle_filter.op {
+                            FilterOp::Eq => run.value == rle_threshold,
+                            FilterOp::Gt => run.value > rle_threshold,
+                            FilterOp::Lt => run.value < rle_threshold,
+                            FilterOp::Ge => run.value >= rle_threshold,
+                            FilterOp::Le => run.value <= rle_threshold,
+                        };
+                        if matches { count_b += run.length as u64; }
+                    }
+                    // count(A AND B): lockstep walk of RLE runs against each matching bitmap
+                    let mut count_ab = 0u64;
+                    for bmap in &matching_bitmaps {
+                        count_ab += rle_count_matching_in_bitmap(&runs, bmap, &rle_filter.op, rle_threshold);
+                    }
+                    let seg_count = count_a + count_b - count_ab;
+                    scalar_count += seg_count;
+                    rows_matched += seg_count;
+                    rows_scanned += reader.metadata.row_count;
+                    stage_agg_ms += agg_t.elapsed().as_secs_f64() * 1000.0;
+                }
+                ColumnStrategy::InclusionExclusionCount3 => {
+                    // COUNT(A OR (B AND C)) = COUNT(A) + COUNT(B AND C) - COUNT(A AND B AND C)
+                    // A, B: bitmap-indexed; C: RLE-only (never materialized as a bitmap)
+                    let (fa, fb, fc) = self
+                        .split_ie3(plan.filter.as_ref().unwrap())
+                        .expect("strategy guarantees split");
+                    let ta = fa.value.parse::<i64>().unwrap_or(0);
+                    let tb = fb.value.parse::<i64>().unwrap_or(0);
+                    let tc = fc.value.parse::<i64>().unwrap_or(0);
+
+                    let open_t = Instant::now();
+                    let bitmaps_a = reader.read_bitmap_index(&fa.column)?;
+                    io_col += 1;
+                    let bitmaps_b = reader.read_bitmap_index(&fb.column)?;
+                    io_col += 1;
+                    let runs_c = reader.read_column_runs_i64(&fc.column)?;
+                    io_col += 1;
+                    stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
+
+                    let agg_t = Instant::now();
+                    // Build bitmap for A
+                    let row_count = reader.metadata.row_count as usize;
+                    let mut bmp_a = Bitmap::new(row_count);
+                    for (val, bmap) in &bitmaps_a {
+                        let include = match &fa.op {
+                            FilterOp::Eq => *val == ta, FilterOp::Gt => *val > ta,
+                            FilterOp::Lt => *val < ta, FilterOp::Ge => *val >= ta,
+                            FilterOp::Le => *val <= ta,
+                        };
+                        if include { bmp_a = bmp_a.or(bmap); }
+                    }
+                    // count(A)
+                    let count_a = bmp_a.count_ones();
+                    // Build bitmap for B
+                    let mut bmp_b = Bitmap::new(row_count);
+                    for (val, bmap) in &bitmaps_b {
+                        let include = match &fb.op {
+                            FilterOp::Eq => *val == tb, FilterOp::Gt => *val > tb,
+                            FilterOp::Lt => *val < tb, FilterOp::Ge => *val >= tb,
+                            FilterOp::Le => *val <= tb,
+                        };
+                        if include { bmp_b = bmp_b.or(bmap); }
+                    }
+                    // count(B AND C): lockstep RLE walk against bmp_b
+                    let count_bc = rle_count_matching_in_bitmap(&runs_c, &bmp_b, &fc.op, tc);
+                    // count(A AND B AND C): lockstep RLE walk against bmp_a AND bmp_b
+                    let bmp_ab = bmp_a.and(&bmp_b);
+                    let count_abc = rle_count_matching_in_bitmap(&runs_c, &bmp_ab, &fc.op, tc);
+
+                    let seg_count = count_a + count_bc - count_abc;
+                    scalar_count += seg_count;
+                    rows_matched += seg_count;
+                    rows_scanned += reader.metadata.row_count;
+                    stage_agg_ms += agg_t.elapsed().as_secs_f64() * 1000.0;
+                }
+                ColumnStrategy::RleScan => {
+                    let filter = match plan.filter.as_ref() {
+                        Some(PredicateExpr::Comparison(f)) => f,
+                        _ => unreachable!("rle_scan_ready guarantees single comparison"),
+                    };
+                    let threshold = filter.value.parse::<i64>().unwrap_or(0);
+                    let op = &filter.op;
+
+                    let col_encoding = reader
+                        .metadata
+                        .columns
+                        .get(&filter.column)
+                        .map(|c| c.encoding.as_str())
+                        .unwrap_or("rle");
+
+                    let open_t = Instant::now();
+                    io_col += 1;
+
+                    if col_encoding == "bincode" {
+                        // Fast path for bincode (raw i64 array): read payload bytes,
+                        // cast directly to &[i64], count with a tight scalar loop.
+                        let raw = reader.read_column_i64_raw_slice(&filter.column)?;
+                        stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
+
+                        let filter_t = Instant::now();
+                        let mut count = 0u64;
+                        let n = raw.len() / 8;
+                        for chunk in raw.chunks_exact(8) {
+                            let v = i64::from_le_bytes(chunk.try_into().unwrap());
+                            let matches = match op {
+                                FilterOp::Eq => v == threshold,
+                                FilterOp::Gt => v > threshold,
+                                FilterOp::Lt => v < threshold,
+                                FilterOp::Ge => v >= threshold,
+                                FilterOp::Le => v <= threshold,
+                            };
+                            count += matches as u64;
+                        }
+                        rows_scanned += n as u64;
+                        rows_matched += count;
+                        scalar_count += count;
+                        stage_filter_ms += filter_t.elapsed().as_secs_f64() * 1000.0;
+                    } else {
+                        // RLE path: O(runs) for COUNT, avoids full materialization.
+                        let runs = reader.read_column_runs_i64(&filter.column)?;
+
+                        // For SUM/AVG we also need the agg column values.
+                        let agg_col_data = match &plan.aggregation {
+                            Aggregation::Sum(col) | Aggregation::Avg(col)
+                                if col != &filter.column =>
+                            {
+                                io_col += 1;
+                                Some(reader.read_column_i64(col)?)
+                            }
+                            _ => None,
+                        };
+                        stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
+
+                        let filter_t = Instant::now();
+                        let mut row_offset = 0usize;
+                        for run in &runs {
+                            let len = run.length as u64;
+                            let matches = match op {
+                                FilterOp::Eq => run.value == threshold,
+                                FilterOp::Gt => run.value > threshold,
+                                FilterOp::Lt => run.value < threshold,
+                                FilterOp::Ge => run.value >= threshold,
+                                FilterOp::Le => run.value <= threshold,
+                            };
+                            rows_scanned += len;
+                            if matches {
+                                rows_matched += len;
+                                match &plan.aggregation {
+                                    Aggregation::Count => scalar_count += len,
+                                    Aggregation::Sum(_) | Aggregation::Avg(_) => {
+                                        if let Some(agg_data) = &agg_col_data {
+                                            for r in row_offset..row_offset + len as usize {
+                                                scalar_sum += agg_data[r] as f64;
+                                            }
+                                            scalar_count += len;
+                                        } else {
+                                            scalar_sum += run.value as f64 * len as f64;
+                                            scalar_count += len;
                                         }
                                     }
                                 }
                             }
+                            row_offset += len as usize;
                         }
-                    } else {
-                        let sampled = (reader.metadata.row_count as f64 * row_rate).round() as u64;
-                        res.scalar_count = sampled;
-                        res.total_rows_read = sampled as usize;
-                    }
-                    res.duration_ms = start_seg.elapsed().as_secs_f64() * 1000.0;
-                    return res;
-                }
-
-                if strategy == ScanStrategy::LazyGroupDecode {
-                    let f_idx = filter_col_idx.unwrap();
-                    let op = &plan.filter.as_ref().unwrap().op;
-                    let f_val = filter_i64_val.unwrap_or(0);
-                    let group_size = config.row_group_size as usize;
-                    let num_rows = reader.metadata.row_count as usize;
-                    let num_groups = (num_rows + group_size - 1) / group_size;
-
-                    let col_open_t = Instant::now();
-                    if let Ok(mut f_fh) = reader.open_column(&config.schema.columns[f_idx].name) {
-                        res.io_col_files_opened += 1;
-                        let mut a_fh = agg_col_idx.and_then(|idx| {
-                            reader.open_column(&config.schema.columns[idx].name).ok()
-                        });
-                        let mut g_fh = group_col_idx.and_then(|idx| {
-                            reader.open_column(&config.schema.columns[idx].name).ok()
-                        });
-
-                        // Populate run caches (fs::read + bincode::deserialize) before the loop
-                        f_fh.get_runs_i64();
-                        if let Some(ref mut h) = a_fh {
-                            h.get_runs_i64();
-                        }
-                        if let Some(ref mut h) = g_fh {
-                            h.get_runs_i64();
-                        }
-                        res.stage_col_open_ns = col_open_t.elapsed().as_nanos();
-
-                        let f_runs = f_fh.get_runs_i64();
-                        let a_runs = a_fh.as_mut().map(|h| h.get_runs_i64());
-                        let g_runs = g_fh.as_mut().map(|h| h.get_runs_i64());
-
-                        let mut f_cur_run = 0usize;
-                        let mut f_cur_off = 0u32;
-                        let mut a_cur_run = 0usize;
-                        let mut a_cur_off = 0u32;
-                        let mut g_cur_run = 0usize;
-                        let mut g_cur_off = 0u32;
-
-                        let op_pass: &dyn Fn(i64) -> bool = match op {
-                            FilterOp::Eq => &|v| v == f_val,
-                            FilterOp::Gt => &|v| v > f_val,
-                            FilterOp::Lt => &|v| v < f_val,
-                            FilterOp::Ge => &|v| v >= f_val,
-                            FilterOp::Le => &|v| v <= f_val,
-                        };
-
-                        for g_idx in 0..num_groups {
-                            res.io_row_groups_eval += 1;
-                            let start = g_idx * group_size;
-                            let end = (start + group_size).min(num_rows);
-                            let count = end - start;
-
-                            if !ColumnSampler::should_sample_row_group(
-                                seg_idx,
-                                g_idx,
-                                row_rate,
-                                config.seed,
-                            ) {
-                                RleEncoder::skip_chunk_i64(
-                                    f_runs,
-                                    count,
-                                    &mut f_cur_run,
-                                    &mut f_cur_off,
-                                );
-                                if let Some(ar) = a_runs {
-                                    RleEncoder::skip_chunk_i64(
-                                        ar,
-                                        count,
-                                        &mut a_cur_run,
-                                        &mut a_cur_off,
-                                    );
-                                }
-                                if let Some(gr) = g_runs {
-                                    RleEncoder::skip_chunk_i64(
-                                        gr,
-                                        count,
-                                        &mut g_cur_run,
-                                        &mut g_cur_off,
-                                    );
-                                }
-                                continue;
-                            }
-                            res.io_row_groups_samp += 1;
-
-                            let filter_t = Instant::now();
-                            let passed = RleEncoder::filter_aggregate_runs(
-                                f_runs,
-                                a_runs,
-                                g_runs,
-                                &mut f_cur_run,
-                                &mut f_cur_off,
-                                &mut a_cur_run,
-                                &mut a_cur_off,
-                                &mut g_cur_run,
-                                &mut g_cur_off,
-                                count,
-                                op_pass,
-                                &mut res.group_sums_u8,
-                                &mut res.group_counts_u8,
-                                &mut res.scalar_sum,
-                                &mut res.scalar_count,
-                            );
-                            res.stage_filter_ns += filter_t.elapsed().as_nanos();
-                            res.rows_after_filter += passed;
-                            res.total_rows_read += count;
-                        }
+                        stage_filter_ms += filter_t.elapsed().as_secs_f64() * 1000.0;
                     }
                 }
-                res.duration_ms = start_seg.elapsed().as_secs_f64() * 1000.0;
-                res
-            })
-            .collect();
+                ColumnStrategy::ScanFallback => {
+                    let open_t = Instant::now();
+                    let required = plan.required_columns();
+                    let mut i64_cols: HashMap<String, crate::utils::aligned_vec::AlignedVec<i64>> = HashMap::new();
+                    for column in required.iter().filter(|name| config.schema.col_index(name).is_some()) {
+                        if let Ok(values) = reader.read_column_i64(column) {
+                            io_col += 1;
+                            i64_cols.insert(column.clone(), values);
+                        }
+                    }
+                    stage_open_ms += open_t.elapsed().as_secs_f64() * 1000.0;
 
-        for r in results {
-            total_rows_read += r.total_rows_read;
-            rows_after_filter += r.rows_after_filter;
-            scalar_count += r.scalar_count;
-            scalar_sum += r.scalar_sum;
-            rows_total_possible += r.rows_total_possible;
-            io_segments_opened += r.io_segments_opened;
-            io_col_files_opened += r.io_col_files_opened;
-            io_bytes_read += r.io_bytes_read;
-            io_row_groups_sampled += r.io_row_groups_samp;
-            // Use max across segments (critical path in parallel execution)
-            stage_aggregation_ns = stage_aggregation_ns.max(r.stage_filter_ns.max(r.stage_agg_ns));
-            stage_decode_ns = stage_decode_ns.max(r.stage_decode_ns);
-            stage_col_open_ms = stage_col_open_ms.max(r.stage_col_open_ns as f64 / 1_000_000.0);
-            for k in 0..256 {
-                group_sums_u8[k] += r.group_sums_u8[k];
-                group_counts_u8[k] += r.group_counts_u8[k];
-            }
-        }
+                    // Pre-parse filter literals so we don't re-parse per row.
+                    let parsed_filter = plan.filter.as_ref().map(|expr| preparse_filter(expr));
 
-        let mut groups = Vec::new();
-        if group_col_idx.is_some() {
-            for k in 0..256 {
-                if group_counts_u8[k] > 0 {
-                    let val = match &plan.aggregation {
-                        Aggregation::Avg(_) => group_sums_u8[k] / group_counts_u8[k] as f64,
-                        Aggregation::Count => group_counts_u8[k] as f64,
-                        _ => group_sums_u8[k],
+                    let filter_t = Instant::now();
+                    let row_count = i64_cols.values().next().map(|v| v.len()).unwrap_or(reader.metadata.row_count as usize);
+                    let agg_values = match &plan.aggregation {
+                        Aggregation::Sum(col) | Aggregation::Avg(col) => i64_cols.get(col),
+                        Aggregation::Count => None,
                     };
-                    groups.push((k.to_string(), val, ConfidenceFlag::High));
+                    for row_idx in 0..row_count {
+                        let matched = parsed_filter.as_ref().map_or(true, |expr| {
+                            eval_preparsed(expr, &|column| {
+                                i64_cols.get(column).map(|vals| vals[row_idx])
+                            })
+                        });
+                        if !matched {
+                            continue;
+                        }
+                        rows_matched += 1;
+                        rows_scanned += 1;
+                        match &plan.group_by {
+                            Some(group_col) => {
+                                let group_val = i64_cols
+                                    .get(group_col)
+                                    .map(|vals| vals[row_idx].to_string())
+                                    .unwrap_or_else(|| "0".to_string());
+                                let entry = grouped.entry(group_val).or_insert((0.0, 0));
+                                match &plan.aggregation {
+                                    Aggregation::Count => {
+                                        entry.0 += 1.0;
+                                        entry.1 += 1;
+                                    }
+                                    Aggregation::Sum(_) | Aggregation::Avg(_) => {
+                                        let value = agg_values.map(|vals| vals[row_idx] as f64).unwrap_or(0.0);
+                                        entry.0 += value;
+                                        entry.1 += 1;
+                                    }
+                                }
+                            }
+                            None => match &plan.aggregation {
+                                Aggregation::Count => scalar_count += 1,
+                                Aggregation::Sum(_) | Aggregation::Avg(_) => {
+                                    scalar_sum += agg_values.map(|vals| vals[row_idx] as f64).unwrap_or(0.0);
+                                    scalar_count += 1;
+                                }
+                            },
+                        }
+                    }
+                    stage_filter_ms += filter_t.elapsed().as_secs_f64() * 1000.0;
                 }
+                ColumnStrategy::MetadataFastPath => unreachable!(),
             }
         }
-        let val = if !groups.is_empty() {
-            AggregateValue::Groups(groups)
+
+        profile.io_read_ms = stage_open_ms;
+        profile.filtering_ms = stage_filter_ms;
+        profile.aggregation_ms = stage_agg_ms;
+
+        let value = if !grouped.is_empty() {
+            AggregateValue::Groups(
+                grouped
+                    .into_iter()
+                    .map(|(key, (sum, count))| {
+                        let val = match &plan.aggregation {
+                            Aggregation::Avg(_) => {
+                                if count > 0 {
+                                    sum / count as f64
+                                } else {
+                                    0.0
+                                }
+                            }
+                            Aggregation::Count => count as f64,
+                            Aggregation::Sum(_) => sum,
+                        };
+                        (key, val, ConfidenceFlag::Exact)
+                    })
+                    .collect(),
+            )
         } else {
-            let s = match &plan.aggregation {
+            let scalar = match &plan.aggregation {
+                Aggregation::Count => scalar_count as f64,
+                Aggregation::Sum(_) => scalar_sum,
                 Aggregation::Avg(_) => {
                     if scalar_count > 0 {
                         scalar_sum / scalar_count as f64
@@ -464,69 +516,337 @@ impl ColumnarPipeline {
                         0.0
                     }
                 }
-                _ => scalar_sum,
             };
-            AggregateValue::Scalar(s)
+            AggregateValue::Scalar(scalar)
         };
-
-        let global_total = if global_total_rows_possible > 0 {
-            global_total_rows_possible
-        } else {
-            1
-        };
-        let act_rate = total_rows_read as f64 / global_total as f64;
-        let scaled =
-            crate::aqp::estimator::Estimator::scale_result(val, &plan.aggregation, act_rate);
 
         self.print_profile(
             plan,
             start_total,
-            stage_col_open_ms,
-            stage_decode_ns,
-            stage_aggregation_ns,
-            io_segments_opened,
-            io_col_files_opened,
-            io_bytes_read,
-            io_row_groups_sampled,
-            rows_total_possible,
-            rows_after_filter,
-            scalar_count,
-            sst_rate,
-            row_rate,
-            false,
-            true,
+            stage_open_ms,
+            stage_filter_ms,
+            stage_agg_ms,
+            self.segments.len() as u64,
+            io_col,
+            rows_total,
+            rows_matched,
+            rows_scanned,
+            1.0,
+            match strategy {
+                ColumnStrategy::GroupCountFastPath => "group_counts",
+                ColumnStrategy::BitmapScalar => "bitmap_scalar",
+                ColumnStrategy::BitmapGroup => "bitmap_group",
+                ColumnStrategy::RleScan => "rle_scan",
+                ColumnStrategy::InclusionExclusionCount => "ie_count",
+                ColumnStrategy::InclusionExclusionCount3 => "ie_count3",
+                ColumnStrategy::ScanFallback => "scan_fallback",
+                ColumnStrategy::MetadataFastPath => "metadata",
+            },
         );
 
         Ok(QueryResult {
-            value: scaled,
-            confidence: ConfidenceFlag::High,
-            storage_path: StoragePath::Columnar,
-            rows_scanned: total_rows_read as u64,
-            sampling_rate: act_rate,
-            estimated_variance: 0.0,
+            value,
+            confidence: ConfidenceFlag::Exact,
             warnings: vec![],
-            profile: overall_profile,
+            storage_path: StoragePath::Columnar,
+            rows_scanned,
+            sampling_rate: 1.0,
+            estimated_variance: 0.0,
+            profile,
         })
+    }
+
+    fn choose_strategy(&self, plan: &QueryPlan) -> ColumnStrategy {
+        if plan.filter.is_none() && plan.group_by.is_none() {
+            return ColumnStrategy::MetadataFastPath;
+        }
+        if plan.filter.is_none()
+            && matches!(plan.aggregation, Aggregation::Count)
+            && let Some(group_col) = &plan.group_by
+            && self
+                .segments
+                .iter()
+                .all(|segment| segment.metadata.columns.get(group_col).and_then(|c| c.index("group_counts")).is_some())
+        {
+            return ColumnStrategy::GroupCountFastPath;
+        }
+        if let Some(group_col) = &plan.group_by {
+            if self
+                .segments
+                .iter()
+                .all(|segment| segment.metadata.columns.get(group_col).and_then(|c| c.index("bitmap_eq")).is_some())
+                && (plan.filter.is_none() || self.bitmap_ready_expr(plan.filter.as_ref()))
+            {
+                return ColumnStrategy::BitmapGroup;
+            }
+        }
+        if plan.group_by.is_none()
+            && matches!(plan.aggregation, Aggregation::Count)
+            && self.inclusion_exclusion_ready(plan.filter.as_ref())
+        {
+            return ColumnStrategy::InclusionExclusionCount;
+        }
+        if plan.group_by.is_none() && self.bitmap_ready_expr(plan.filter.as_ref()) {
+            return ColumnStrategy::BitmapScalar;
+        }
+        if plan.group_by.is_none() && self.rle_scan_ready(plan) {
+            return ColumnStrategy::RleScan;
+        }
+        ColumnStrategy::ScanFallback
+    }
+
+    // Returns Some((bitmap_filter, rle_filter)) if the filter is a two-arm OR where one
+    // arm has a bitmap_eq index and the other is an RLE-encoded Eq column (no bitmap index).
+    // The RLE arm must use Eq (not a range op) because the IE intersection term
+    // rle_count_matching_in_bitmap walks every matching RLE run against the bitmap —
+    // cheap for Eq (few matching runs) but expensive for range ops on high-cardinality columns.
+    // Range ops stay in BitmapScalar where a SIMD bitmap OR is faster.
+    fn split_or_for_inclusion_exclusion<'a>(
+        &self,
+        expr: &'a PredicateExpr,
+    ) -> Option<(&'a Filter, &'a Filter)> {
+        let PredicateExpr::Or(left, right) = expr else { return None };
+        let (PredicateExpr::Comparison(lf), PredicateExpr::Comparison(rf)) =
+            (left.as_ref(), right.as_ref())
+        else {
+            return None;
+        };
+        let l_has_bitmap = self.segments.iter().all(|s| {
+            s.metadata.columns.get(&lf.column).and_then(|c| c.index("bitmap_eq")).is_some()
+        });
+        let r_is_rle_eq = matches!(rf.op, FilterOp::Eq) && self.segments.iter().all(|s| {
+            s.metadata.columns.get(&rf.column)
+                .map(|c| c.encoding == "rle" && c.index("bitmap_eq").is_none())
+                .unwrap_or(false)
+        });
+        if l_has_bitmap && r_is_rle_eq {
+            return Some((lf, rf));
+        }
+        let r_has_bitmap = self.segments.iter().all(|s| {
+            s.metadata.columns.get(&rf.column).and_then(|c| c.index("bitmap_eq")).is_some()
+        });
+        let l_is_rle_eq = matches!(lf.op, FilterOp::Eq) && self.segments.iter().all(|s| {
+            s.metadata.columns.get(&lf.column)
+                .map(|c| c.encoding == "rle" && c.index("bitmap_eq").is_none())
+                .unwrap_or(false)
+        });
+        if r_has_bitmap && l_is_rle_eq {
+            return Some((rf, lf));
+        }
+        None
+    }
+
+    fn inclusion_exclusion_ready(&self, filter: Option<&PredicateExpr>) -> bool {
+        filter
+            .map(|f| self.split_or_for_inclusion_exclusion(f).is_some())
+            .unwrap_or(false)
+    }
+
+    // Detects Or(bitmap_leaf, And(bitmap_leaf, rle_leaf)) or the symmetric form.
+    // Returns (bitmap_a, bitmap_b, rle_filter) where:
+    //   count = count(A) + count(B AND C) - count(A AND B AND C)
+    // and none of these require materializing a bitmap for the rle column.
+    fn split_ie3<'a>(
+        &self,
+        expr: &'a PredicateExpr,
+    ) -> Option<(&'a Filter, &'a Filter, &'a Filter)> {
+        let PredicateExpr::Or(or_left, or_right) = expr else { return None };
+
+        // Try Or(bitmap_leaf, And(bitmap_leaf, rle_leaf))
+        let try_split = |a: &'a PredicateExpr, and_expr: &'a PredicateExpr| -> Option<(&'a Filter, &'a Filter, &'a Filter)> {
+            let PredicateExpr::Comparison(fa) = a else { return None };
+            let PredicateExpr::And(and_l, and_r) = and_expr else { return None };
+            let (PredicateExpr::Comparison(fb), PredicateExpr::Comparison(fc)) =
+                (and_l.as_ref(), and_r.as_ref()) else { return None };
+
+            let a_has_bitmap = self.segments.iter().all(|s| {
+                s.metadata.columns.get(&fa.column).and_then(|c| c.index("bitmap_eq")).is_some()
+            });
+            let b_has_bitmap = self.segments.iter().all(|s| {
+                s.metadata.columns.get(&fb.column).and_then(|c| c.index("bitmap_eq")).is_some()
+            });
+            let c_is_rle = self.segments.iter().all(|s| {
+                s.metadata.columns.get(&fc.column)
+                    .map(|c| c.encoding == "rle" && c.index("bitmap_eq").is_none())
+                    .unwrap_or(false)
+            });
+            if a_has_bitmap && b_has_bitmap && c_is_rle {
+                return Some((fa, fb, fc));
+            }
+            // Also try And(rle_leaf, bitmap_leaf) order
+            let b_is_rle = self.segments.iter().all(|s| {
+                s.metadata.columns.get(&fb.column)
+                    .map(|c| c.encoding == "rle" && c.index("bitmap_eq").is_none())
+                    .unwrap_or(false)
+            });
+            let c_has_bitmap = self.segments.iter().all(|s| {
+                s.metadata.columns.get(&fc.column).and_then(|c| c.index("bitmap_eq")).is_some()
+            });
+            if a_has_bitmap && c_has_bitmap && b_is_rle {
+                return Some((fa, fc, fb));
+            }
+            None
+        };
+
+        try_split(or_left, or_right).or_else(|| try_split(or_right, or_left))
+    }
+
+    fn ie3_ready(&self, filter: Option<&PredicateExpr>) -> bool {
+        filter.map(|f| self.split_ie3(f).is_some()).unwrap_or(false)
+    }
+
+    // Returns true when the plan has a simple COUNT with a single comparison filter
+    // on an RLE or bincode i64 column with no group_by.
+    fn rle_scan_ready(&self, plan: &QueryPlan) -> bool {
+        if plan.group_by.is_some() {
+            return false;
+        }
+        let filter = match plan.filter.as_ref() {
+            Some(PredicateExpr::Comparison(f)) => f,
+            _ => return false,
+        };
+        self.segments.iter().all(|seg| {
+            seg.metadata
+                .columns
+                .get(&filter.column)
+                .map(|c| c.encoding == "rle" || c.encoding == "bincode")
+                .unwrap_or(false)
+        })
+    }
+
+    fn bitmap_ready_expr(&self, expr: Option<&PredicateExpr>) -> bool {
+        expr.map_or(false, |expr| self.bitmap_ready_node(expr))
+    }
+
+    fn bitmap_ready_node(&self, expr: &PredicateExpr) -> bool {
+        match expr {
+            PredicateExpr::Comparison(filter) => self.segments.iter().all(|segment| {
+                let col = segment.metadata.columns.get(&filter.column);
+                // bitmap_eq index: supports all ops via index lookup
+                // rle encoding: supports all ops via on-the-fly run scan
+                col.and_then(|c| c.index("bitmap_eq")).is_some()
+                    || col.map(|c| c.encoding == "rle").unwrap_or(false)
+            }),
+            PredicateExpr::Not(inner) => self.bitmap_ready_node(inner),
+            PredicateExpr::And(left, right) | PredicateExpr::Or(left, right) => {
+                self.bitmap_ready_node(left) && self.bitmap_ready_node(right)
+            }
+        }
+    }
+
+    fn eval_bitmap_expr(
+        &self,
+        expr: Option<&PredicateExpr>,
+        reader: &ColumnarReader,
+        cache: &mut HashMap<String, HashMap<i64, Bitmap>>,
+    ) -> Result<Option<Bitmap>, QueryError> {
+        expr.map(|expr| self.eval_bitmap_node(expr, reader, cache))
+            .transpose()
+    }
+
+    fn eval_bitmap_node(
+        &self,
+        expr: &PredicateExpr,
+        reader: &ColumnarReader,
+        cache: &mut HashMap<String, HashMap<i64, Bitmap>>,
+    ) -> Result<Bitmap, QueryError> {
+        match expr {
+            PredicateExpr::Comparison(filter) => self.bitmap_for_filter(filter, reader, cache),
+            PredicateExpr::Not(inner) => Ok(self.eval_bitmap_node(inner, reader, cache)?.not()),
+            PredicateExpr::And(left, right) => Ok(self
+                .eval_bitmap_node(left, reader, cache)?
+                .and(&self.eval_bitmap_node(right, reader, cache)?)),
+            PredicateExpr::Or(left, right) => {
+                let left_bmp = self.eval_bitmap_node(left, reader, cache)?;
+                // Short-circuit: if left already matches all rows, skip evaluating right.
+                if left_bmp.count_ones() as u64 == reader.metadata.row_count {
+                    return Ok(left_bmp);
+                }
+                Ok(left_bmp.or(&self.eval_bitmap_node(right, reader, cache)?))
+            }
+        }
+    }
+
+    fn bitmap_for_filter(
+        &self,
+        filter: &Filter,
+        reader: &ColumnarReader,
+        cache: &mut HashMap<String, HashMap<i64, Bitmap>>,
+    ) -> Result<Bitmap, QueryError> {
+        let col_meta = reader
+            .metadata
+            .columns
+            .get(&filter.column)
+            .ok_or_else(|| QueryError::UnknownColumn(filter.column.clone()))?;
+        let target = filter
+            .value
+            .parse::<i64>()
+            .map_err(|_| QueryError::ParseError(format!("invalid literal {}", filter.value)))?;
+        let op = &filter.op;
+
+        // Fast path: use pre-built bitmap_eq index when available.
+        if let Some(bitmap_meta) = col_meta.index("bitmap_eq") {
+            let index = if let Some(existing) = cache.get(&filter.column) {
+                existing.clone()
+            } else {
+                let loaded = reader.read_bitmap_index(&filter.column).map_err(QueryError::StorageError)?;
+                cache.insert(filter.column.clone(), loaded.clone());
+                loaded
+            };
+            let mut bitmap = Bitmap::new(bitmap_meta.row_count as usize);
+            for value in &bitmap_meta.values {
+                let include = match op {
+                    FilterOp::Eq => *value == target,
+                    FilterOp::Gt => *value > target,
+                    FilterOp::Lt => *value < target,
+                    FilterOp::Ge => *value >= target,
+                    FilterOp::Le => *value <= target,
+                };
+                if include {
+                    if let Some(part) = index.get(value) {
+                        bitmap = bitmap.or(part);
+                    }
+                }
+            }
+            return Ok(bitmap);
+        }
+
+        // Fallback: build bitmap from RLE runs (O(runs), no index required).
+        let row_count = reader.metadata.row_count as usize;
+        let runs = reader.read_column_runs_i64(&filter.column)?;
+        let mut bitmap = Bitmap::new(row_count);
+        let mut row = 0usize;
+        for run in &runs {
+            let len = run.length as usize;
+            let include = match op {
+                FilterOp::Eq => run.value == target,
+                FilterOp::Gt => run.value > target,
+                FilterOp::Lt => run.value < target,
+                FilterOp::Ge => run.value >= target,
+                FilterOp::Le => run.value <= target,
+            };
+            if include {
+                bitmap.set_range(row, len);
+            }
+            row += len;
+        }
+        Ok(bitmap)
     }
 
     fn print_profile(
         &self,
         plan: &QueryPlan,
         start: Instant,
-        s_col: f64,
-        s_dec: u128,
-        s_filt: u128,
-        i_seg: u64,
-        i_col: u64,
-        _i_bytes: u64,
-        _i_rg: u64,
-        r_tot: u64,
-        r_filt: u64,
-        r_samp: u64,
-        s_sst: f64,
-        s_row: f64,
-        mfp: bool,
-        para: bool,
+        open_ms: f64,
+        filter_ms: f64,
+        agg_ms: f64,
+        segs: u64,
+        cols: u64,
+        rows_total: u64,
+        rows_matched: u64,
+        rows_scanned: u64,
+        rate: f64,
+        strategy: &str,
     ) {
         let q = match (&plan.aggregation, plan.group_by.is_some()) {
             (Aggregation::Count, true) => "Q1",
@@ -535,14 +855,96 @@ impl ColumnarPipeline {
             _ => "QX",
         };
         println!(
-            "[PROFILE] query={q} total_ms={:.2} stage.col_open_ms={s_col:.2} stage.decode_ms={:.2} stage.filter_agg_ms={:.2} io.seg={i_seg} io.col={i_col} rows.tot={r_tot} rows.filt={r_filt} rows.samp={r_samp} rate.sst={s_sst:.4} rate.row={s_row:.4} mfp={mfp} parallel={para}",
+            "[PROFILE] query={q} total_ms={:.2} stage.col_open_ms={open_ms:.2} stage.decode_ms=0.00 stage.filter_agg_ms={:.2} io.seg={segs} io.col={cols} rows.tot={rows_total} rows.filt={rows_matched} rows.samp={rows_scanned} rate.sst={rate:.4} rate.row={rate:.4} mfp={} parallel=true strategy={strategy}",
             start.elapsed().as_secs_f64() * 1000.0,
-            s_dec as f64 / 1_000_000.0,
-            s_filt as f64 / 1_000_000.0,
+            filter_ms + agg_ms,
+            strategy == "metadata",
         );
     }
 }
 
-fn scaler_count_final_add(src: u64, dst: &mut u64) {
-    *dst += src;
+// Pre-parsed filter tree where literal values are already converted to i64.
+// Used by ScanFallback to avoid re-parsing per row.
+enum PreparsedExpr {
+    Cmp { col: String, op: FilterOp, threshold: i64 },
+    Not(Box<PreparsedExpr>),
+    And(Box<PreparsedExpr>, Box<PreparsedExpr>),
+    Or(Box<PreparsedExpr>, Box<PreparsedExpr>),
+}
+
+fn preparse_filter(expr: &PredicateExpr) -> PreparsedExpr {
+    match expr {
+        PredicateExpr::Comparison(f) => PreparsedExpr::Cmp {
+            col: f.column.clone(),
+            op: f.op.clone(),
+            threshold: f.value.parse::<i64>().unwrap_or(0),
+        },
+        PredicateExpr::Not(inner) => PreparsedExpr::Not(Box::new(preparse_filter(inner))),
+        PredicateExpr::And(l, r) => PreparsedExpr::And(
+            Box::new(preparse_filter(l)),
+            Box::new(preparse_filter(r)),
+        ),
+        PredicateExpr::Or(l, r) => PreparsedExpr::Or(
+            Box::new(preparse_filter(l)),
+            Box::new(preparse_filter(r)),
+        ),
+    }
+}
+
+fn eval_preparsed(expr: &PreparsedExpr, get: &impl Fn(&str) -> Option<i64>) -> bool {
+    match expr {
+        PreparsedExpr::Cmp { col, op, threshold } => {
+            let Some(v) = get(col) else { return false };
+            match op {
+                FilterOp::Eq => v == *threshold,
+                FilterOp::Gt => v > *threshold,
+                FilterOp::Lt => v < *threshold,
+                FilterOp::Ge => v >= *threshold,
+                FilterOp::Le => v <= *threshold,
+            }
+        }
+        PreparsedExpr::Not(inner) => !eval_preparsed(inner, get),
+        PreparsedExpr::And(l, r) => eval_preparsed(l, get) && eval_preparsed(r, get),
+        PreparsedExpr::Or(l, r) => eval_preparsed(l, get) || eval_preparsed(r, get),
+    }
+}
+
+/// Sum values from `runs` at positions indicated by `bitmap`, without materializing the full
+/// decoded array. Walks runs in order, uses word-level popcount per run: O(runs × words/run).
+fn rle_sum_by_bitmap(runs: &[RleRunI64], bitmap: &Bitmap) -> f64 {
+    let mut sum = 0.0f64;
+    let mut row = 0usize;
+    for run in runs {
+        let len = run.length as usize;
+        let end = row + len;
+        let count = bitmap.count_ones_range(row, end);
+        if count > 0 {
+            sum += run.value as f64 * count as f64;
+        }
+        row = end;
+    }
+    sum
+}
+
+/// Count bits set in `bitmap` at positions where the RLE column satisfies `op threshold`.
+/// Used for inclusion-exclusion on OR filters involving RLE columns.
+fn rle_count_matching_in_bitmap(runs: &[RleRunI64], bitmap: &Bitmap, op: &FilterOp, threshold: i64) -> u64 {
+    let mut count = 0u64;
+    let mut row = 0usize;
+    for run in runs {
+        let len = run.length as usize;
+        let end = row + len;
+        let matches = match op {
+            FilterOp::Eq => run.value == threshold,
+            FilterOp::Gt => run.value > threshold,
+            FilterOp::Lt => run.value < threshold,
+            FilterOp::Ge => run.value >= threshold,
+            FilterOp::Le => run.value <= threshold,
+        };
+        if matches {
+            count += bitmap.count_ones_range(row, end);
+        }
+        row = end;
+    }
+    count
 }
