@@ -16,9 +16,28 @@ pub struct ColumnMetadata {
     pub max: f64,
     pub distinct_count: u64,
     pub crc32: u32,
+    #[serde(default)]
+    pub indexes: Vec<ColumnIndexMetadata>,
 }
 
-use std::collections::{BTreeMap, HashMap};
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ColumnIndexMetadata {
+    pub kind: String,
+    pub file: String,
+    #[serde(default)]
+    pub values: Vec<i64>,
+    pub row_count: u64,
+    #[serde(default)]
+    pub supports: Vec<String>,
+}
+
+impl ColumnMetadata {
+    pub fn index(&self, kind: &str) -> Option<&ColumnIndexMetadata> {
+        self.indexes.iter().find(|idx| idx.kind == kind)
+    }
+}
+
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SSTableMetadata {
