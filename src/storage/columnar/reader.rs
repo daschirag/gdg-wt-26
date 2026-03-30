@@ -1,4 +1,5 @@
 use crate::errors::StorageError;
+use crate::storage::bitmap::{read_bitmap_index, Bitmap};
 use crate::storage::columnar::encoding::delta::{DeltaEncoded, DeltaEncoder};
 use crate::storage::columnar::encoding::rle::{RleEncoder, RleRun, RleRunI64};
 use crate::types::{ColumnMetadata, SSTableMetadata};
@@ -125,9 +126,19 @@ impl ColumnarReader {
                 })?;
                 Ok(AlignedVec::from_slice(&DeltaEncoder::decode_i64(&encoded)))
             }
+            "bincode" => {
+                if let Ok(aligned) = bincode::deserialize::<AlignedVec<i64>>(&bytes) {
+                    Ok(aligned)
+                } else {
+                    let data: Vec<i64> = bincode::deserialize(&bytes).map_err(|e| {
+                        StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    })?;
+                    Ok(AlignedVec::from_slice(&data))
+                }
+            }
             _ => Err(StorageError::ReadError(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Invalid encoding",
+                format!("Invalid i64 encoding {}", col_meta.encoding),
             ))),
         }
     }
@@ -167,6 +178,68 @@ impl ColumnarReader {
     pub fn read_column_runs_i64(&self, name: &str) -> Result<Vec<RleRunI64>, StorageError> {
         let bytes = self.read_column_bytes(name)?;
         decode_rle_i64_owned(&bytes)
+    }
+
+    /// For bincode-encoded i64 columns: return the raw payload bytes after the 8-byte length prefix.
+    /// The caller can cast these directly to `&[i64]` (LE, packed) without a full deserialization.
+    pub fn read_column_i64_raw_slice(&self, name: &str) -> Result<Vec<u8>, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
+        })?;
+        if col_meta.encoding != "bincode" {
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "not a bincode column",
+            )));
+        }
+        let bytes = self.read_column_bytes(name)?;
+        // bincode Vec<i64>: 8 bytes (LE u64 length) + N*8 bytes of i64 values
+        if bytes.len() < 8 {
+            return Ok(vec![]);
+        }
+        Ok(bytes[8..].to_vec())
+    }
+
+    pub fn read_bitmap_index(
+        &self,
+        name: &str,
+    ) -> Result<std::collections::HashMap<i64, Bitmap>, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
+        })?;
+        let bitmap_meta = col_meta.index("bitmap_eq").ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Bitmap index not available",
+            ))
+        })?;
+        read_bitmap_index(&self.path.join(&bitmap_meta.file))
+    }
+
+    pub fn read_group_counts(&self, name: &str) -> Result<Vec<(i64, u64)>, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
+        })?;
+        let group_meta = col_meta.index("group_counts").ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Group counts index not available",
+            ))
+        })?;
+        let bytes = fs::read(self.path.join(&group_meta.file))?;
+        let (values, counts): (Vec<i64>, Vec<u64>) = bincode::deserialize(&bytes).map_err(|e| {
+            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })?;
+        Ok(values.into_iter().zip(counts).collect())
     }
 
     pub fn open_column(&self, col_name: &str) -> Result<ColumnFileHandle, StorageError> {
