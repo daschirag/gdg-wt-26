@@ -30,27 +30,7 @@ impl QueryPlanner {
         let segments = storage.get_all_segments();
         let sstables = storage.get_all_sstables();
 
-        let mut columns_needed = Vec::new();
-        match &plan.aggregation {
-            crate::query::ast::Aggregation::Count => {
-                columns_needed.push("user_id".to_string());
-            }
-            crate::query::ast::Aggregation::Sum(col) | crate::query::ast::Aggregation::Avg(col) => {
-                columns_needed.push(col.clone());
-            }
-        }
-
-        if let Some(filter) = &plan.filter {
-            if !columns_needed.contains(&filter.column) {
-                columns_needed.push(filter.column.clone());
-            }
-        }
-
-        if let Some(group_by) = &plan.group_by {
-            if !columns_needed.contains(group_by) {
-                columns_needed.push(group_by.clone());
-            }
-        }
+        let columns_needed = plan.required_columns();
 
         if plan.filter.is_none() && plan.group_by.is_none() && sstables.is_empty() {
             let col = match &plan.aggregation {
