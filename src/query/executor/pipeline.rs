@@ -140,7 +140,11 @@ impl Pipeline {
         let mut final_count = 0;
         let mut final_i64: std::collections::HashMap<usize, AlignedVec<i64>> = std::collections::HashMap::new();
         let mut final_f64: std::collections::HashMap<usize, AlignedVec<f64>> = std::collections::HashMap::new();
-        let mut seen = mask.cloned().unwrap_or_default();
+        let mut seen = if skip_dedup {
+            std::collections::HashSet::new()
+        } else {
+            mask.cloned().unwrap_or_default()
+        };
 
         for (path, _) in &sampled_sst_paths_with_counts {
             if let Ok(reader) = ColumnarReader::new(path.into()) {

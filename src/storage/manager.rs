@@ -130,10 +130,6 @@ impl StorageManager {
     }
 
     pub fn all_sources_compacted(&self) -> bool {
-        let mem_empty = self.memtable.read().unwrap().data.is_empty();
-        let num_segs = self.cached_segments.read().unwrap().len();
-        let num_ssts = self.cached_sstables.read().unwrap().len();
-        
-        mem_empty && num_segs <= 1 && num_ssts == 0
+        self.cached_sstables.read().unwrap().is_empty()
     }
 }
