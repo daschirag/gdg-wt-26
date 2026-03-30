@@ -1,11 +1,10 @@
 use crate::errors::QueryError;
-use crate::query::ast::{Aggregation, FilterOp, QueryPlan};
+use crate::query::ast::{Aggregation, PredicateExpr, QueryPlan};
 use crate::query::executor::aggregator::Aggregator;
 use crate::storage::columnar::reader::ColumnarReader;
 use crate::storage::sstable::reader::SSTableReader;
 use crate::types::{AggregateValue, ConfidenceFlag, QueryResult, StoragePath};
 use crate::utils::aligned_vec::AlignedVec;
-use std::collections::HashSet;
 
 pub struct Pipeline {
     pub sstables: Vec<String>,
@@ -157,10 +156,7 @@ impl Pipeline {
             .map(|name| config.schema.col_index(name).expect("Column not in schema"))
             .collect();
 
-        let filter_col_idx = plan
-            .filter
-            .as_ref()
-            .and_then(|f| config.schema.col_index(&f.column));
+        let filter_col_idx = None;
         let group_col_idx = plan
             .group_by
             .as_ref()
@@ -209,8 +205,13 @@ impl Pipeline {
 
                 // 2. Filter this segment
                 let start_seg_filter = std::time::Instant::now();
-                let seg_filtered_indices =
-                    self.apply_filter_columnar_indexed(&seg_i64, &seg_f64, plan, filter_col_idx);
+                let seg_filtered_indices = self.apply_filter_columnar_indexed(
+                    &seg_i64,
+                    &seg_f64,
+                    plan,
+                    filter_col_idx,
+                    config,
+                );
 
                 if seg_filtered_indices.is_empty() {
                     continue;
@@ -280,32 +281,7 @@ impl Pipeline {
     }
 
     fn apply_bloom_filter(&self, plan: &QueryPlan) -> Vec<String> {
-        if let Some(filter) = &plan.filter {
-            if filter.column == "user_id" && filter.op == FilterOp::Eq {
-                if let Ok(uid) = filter.value.parse::<u64>() {
-                    return self
-                        .sstables
-                        .iter()
-                        .filter(|path| {
-                            // Try columnar bloom first
-                            let bloom_path = std::path::Path::new(path).join("bloom.bin");
-                            if bloom_path.exists() {
-                                if let Ok(bytes) = std::fs::read(bloom_path) {
-                                    if let Ok(bloom) = bincode::deserialize::<
-                                        crate::storage::bloom::filter::BloomFilterWrapper,
-                                    >(&bytes)
-                                    {
-                                        return bloom.contains(uid);
-                                    }
-                                }
-                            }
-                            true
-                        })
-                        .cloned()
-                        .collect();
-                }
-            }
-        }
+        let _ = plan;
         self.sstables.clone()
     }
 
@@ -326,6 +302,7 @@ impl Pipeline {
         f64_cols: &std::collections::HashMap<usize, AlignedVec<f64>>,
         plan: &QueryPlan,
         filter_col_idx: Option<usize>,
+        config: &crate::config::Config,
     ) -> Vec<usize> {
         let row_count = i64_cols
             .values()
@@ -336,41 +313,9 @@ impl Pipeline {
 
         let mut indices = Vec::with_capacity(row_count);
         for i in 0..row_count {
-            let matches = if let Some(f_idx) = filter_col_idx {
-                if let Some(filter) = &plan.filter {
-                    if let Some(vals) = i64_cols.get(&f_idx) {
-                        if let Ok(f_val) = filter.value.parse::<i64>() {
-                            match filter.op {
-                                FilterOp::Eq => vals[i] == f_val,
-                                FilterOp::Gt => vals[i] > f_val,
-                                FilterOp::Lt => vals[i] < f_val,
-                                FilterOp::Ge => vals[i] >= f_val,
-                                FilterOp::Le => vals[i] <= f_val,
-                            }
-                        } else {
-                            true
-                        }
-                    } else if let Some(vals) = f64_cols.get(&f_idx) {
-                        if let Ok(f_val) = filter.value.parse::<f64>() {
-                            match filter.op {
-                                FilterOp::Eq => (vals[i] - f_val).abs() < 1e-6,
-                                FilterOp::Gt => vals[i] > f_val,
-                                FilterOp::Lt => vals[i] < f_val,
-                                FilterOp::Ge => vals[i] >= f_val,
-                                FilterOp::Le => vals[i] <= f_val,
-                            }
-                        } else {
-                            true
-                        }
-                    } else {
-                        true
-                    }
-                } else {
-                    true
-                }
-            } else {
-                true
-            };
+            let matches = plan.filter.as_ref().map_or(true, |expr| {
+                eval_expr_on_columnar(expr, i64_cols, f64_cols, config, filter_col_idx, i)
+            });
 
             if matches {
                 indices.push(i);
@@ -378,4 +323,28 @@ impl Pipeline {
         }
         indices
     }
+}
+
+fn eval_expr_on_columnar(
+    expr: &PredicateExpr,
+    i64_cols: &std::collections::HashMap<usize, AlignedVec<i64>>,
+    f64_cols: &std::collections::HashMap<usize, AlignedVec<f64>>,
+    config: &crate::config::Config,
+    filter_col_idx: Option<usize>,
+    row_idx: usize,
+) -> bool {
+    expr.eval_value(&|column| {
+        let idx = if let Some(idx) = filter_col_idx {
+            idx
+        } else {
+            config.schema.col_index(column)?
+        };
+        if let Some(vals) = i64_cols.get(&idx) {
+            Some(crate::types::Value::Int(vals[row_idx]))
+        } else {
+            f64_cols
+                .get(&idx)
+                .map(|vals| crate::types::Value::Float(vals[row_idx]))
+        }
+    })
 }
