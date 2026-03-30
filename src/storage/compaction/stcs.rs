@@ -1,10 +1,13 @@
-use std::path::Path;
 use crate::errors::StorageError;
+use std::path::Path;
 
 pub struct StcsCompactor;
 
 impl StcsCompactor {
-    pub fn plan_compaction(sst_dir: &Path, min_files: usize) -> Result<Vec<Vec<String>>, StorageError> {
+    pub fn plan_compaction(
+        sst_dir: &Path,
+        min_files: usize,
+    ) -> Result<Vec<Vec<String>>, StorageError> {
         let entries = std::fs::read_dir(sst_dir)?;
         let mut files = Vec::new();
 
@@ -44,7 +47,8 @@ impl StcsCompactor {
         buckets.push(current_bucket);
 
         // 3. Keep only buckets that meet the minimum file count
-        let candidates: Vec<Vec<String>> = buckets.into_iter()
+        let candidates: Vec<Vec<String>> = buckets
+            .into_iter()
             .filter(|b| b.len() >= min_files)
             .collect();
 

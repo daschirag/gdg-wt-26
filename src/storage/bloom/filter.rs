@@ -40,13 +40,9 @@ impl<'de> Deserialize<'de> for BloomFilterWrapper {
             inner: Vec<u8>,
         }
         let data = BloomData::deserialize(deserializer)?;
-        let bloom = Bloom::from_existing(
-            &data.inner,
-            data.bit_vec_len as u64,
-            data.k,
-            data.sip_keys,
-        );
-        
+        let bloom =
+            Bloom::from_existing(&data.inner, data.bit_vec_len as u64, data.k, data.sip_keys);
+
         Ok(Self {
             fpr: data.fpr,
             bit_vec_len: data.bit_vec_len,

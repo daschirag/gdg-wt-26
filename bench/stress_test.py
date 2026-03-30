@@ -22,6 +22,14 @@ min_group_rows = 50
 memtable_row_limit = 1048576
 memtable_size_limit = 104857600
 verify_crc = false
+
+# Analytical engine params
+compaction_strategy = "stcs"
+compaction_interval_secs = 30
+min_compaction_files = 4
+row_group_size = 1024
+lcs_l1_max_bytes = 10485760
+lcs_l2_max_bytes = 104857600
 """
         with open("config.toml", "w") as f:
             f.write(config_data.strip())
@@ -30,13 +38,24 @@ verify_crc = false
         print(f"Generating {num_rows:,} rows via Python tool...")
         start = time.perf_counter()
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-        # 1. Run Python Generator
-        subprocess.run(["python3", "tools/gen_data.py", "--num", str(num_rows), "--output", csv_path], check=True, capture_output=True)
+        
+        # Clean old data to prevent mixing (only AQE data, keeping CSV)
+        subprocess.run("rm -rf data/*.aqe data/segments/*", shell=True)
+        
+        # 1. Run Python Generator (Skipping because the 10M row CSV is already generated)
+        print("Data already generated, skipping Python generator...")
+        # subprocess.run(["python3", "tools/gen_data.py", "--num", str(num_rows), "--output", csv_path], check=True, capture_output=False)
+        
         # 2. Run Rust Loader
-        print(f"Loading CSV into LSM storage...")
-        subprocess.run([self.binary_path, "load", csv_path], check=True, capture_output=True)
+        print("Loading CSV into LSM storage...")
+        subprocess.run([self.binary_path, "load", csv_path], check=True, capture_output=False)
+        
+        # 3. Compact to Columnar
+        print("Compacting to columnar format...")
+        subprocess.run([self.binary_path, "compact"], check=True, capture_output=False)
+        
         duration = time.perf_counter() - start
-        print(f"Generation & Load completed in {duration:.2f}s")
+        print(f"Generation, Load & Compaction completed in {duration:.2f}s")
         return duration
 
     def run_query(self, sql, accuracy):
@@ -88,8 +107,8 @@ def run_stress_test():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     # Speed up inserts for the sake of the benchmark setup
-    # cursor.execute("PRAGMA synchronous = OFF")
-    # cursor.execute("PRAGMA journal_mode = MEMORY")
+    cursor.execute("PRAGMA synchronous = OFF")
+    cursor.execute("PRAGMA journal_mode = MEMORY")
     
     # Correct schema for SQLite based on our schema.toml (+ the new 'level' column)
     cursor.execute("CREATE TABLE users (user_id INTEGER, status INTEGER, country INTEGER, timestamp INTEGER, level INTEGER)")
@@ -103,9 +122,11 @@ def run_stress_test():
             count += 1
             if count % 100000 == 0:
                 cursor.executemany("INSERT INTO users VALUES (?, ?, ?, ?, ?)", batch)
+                conn.commit()
                 batch = []
     if batch:
         cursor.executemany("INSERT INTO users VALUES (?, ?, ?, ?, ?)", batch)
+        conn.commit()
     
     sqlite_setup_time = time.perf_counter() - start_sqlite
     print(f"SQLite Loaded 10M rows in {sqlite_setup_time:.2f}s")

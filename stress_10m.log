@@ -1,0 +1,256 @@
+nohup: ignoring input
+warning: unused import: `HashMap`
+  --> src/types.rs:21:24
+   |
+21 | use std::collections::{HashMap, BTreeMap};
+   |                        ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `RleRun`
+ --> src/storage/columnar/writer.rs:4:59
+  |
+4 | use crate::storage::columnar::encoding::rle::{RleEncoder, RleRun};
+  |                                                           ^^^^^^
+
+warning: unused import: `std::collections::HashSet`
+ --> src/query/executor/pipeline.rs:8:5
+  |
+8 | use std::collections::HashSet;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:354:29
+    |
+354 |                         let mut a_fh = if agg_col_idx.is_some() && agg_col_idx != filter_col_idx {
+    |                             ----^^^^
+    |                             |
+    |                             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:36:13
+   |
+36 |         let mut stage_bloom_ms = 0.0;
+   |             ----^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:37:13
+   |
+37 |         let mut stage_sst_weight_ms = 0.0;
+   |             ----^^^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:41:13
+   |
+41 |         let mut stage_late_mat_ms = 0.0;
+   |             ----^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:52:13
+   |
+52 |         let mut rows_total_possible = 0u64;
+   |             ----^^^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:53:13
+   |
+53 |         let mut rows_after_filter = 0u64;
+   |             ----^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:54:13
+   |
+54 |         let mut rows_after_sample = 0u64;
+   |             ----^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:55:13
+   |
+55 |         let mut rows_after_dedup = 0u64;
+   |             ----^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:187:13
+    |
+187 |         let mut total_rows_possible: u64 = 0;
+    |             ----^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:195:13
+    |
+195 |         let mut current_row_rate = row_rate;
+    |             ----^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:196:13
+    |
+196 |         let mut pilot_done = false;
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:197:13
+    |
+197 |         let mut seen = if skip_dedup {
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `rows_after_sample`
+  --> src/query/executor/col_pipeline.rs:54:13
+   |
+54 |         let mut rows_after_sample = 0u64;
+   |             ^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rows_after_sample`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `user_id_idx`
+  --> src/query/executor/col_pipeline.rs:73:13
+   |
+73 |         let user_id_idx = config.schema.columns.iter().position(|c| c.name == "user_id");
+   |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id_idx`
+
+warning: unused variable: `total_rows_possible`
+   --> src/query/executor/col_pipeline.rs:187:13
+    |
+187 |         let mut total_rows_possible: u64 = 0;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_rows_possible`
+
+warning: unused variable: `seen`
+   --> src/query/executor/col_pipeline.rs:197:13
+    |
+197 |         let mut seen = if skip_dedup {
+    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_seen`
+
+warning: unused variable: `filter_f64_val`
+   --> src/query/executor/col_pipeline.rs:206:13
+    |
+206 |         let filter_f64_val = plan.filter.as_ref().and_then(|f| f.value.parse::<f64>().ok());
+    |             ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_filter_f64_val`
+
+warning: variable `pilot_triggered` is assigned to, but never used
+   --> src/query/executor/col_pipeline.rs:207:14
+    |
+207 |         let (mut pilot_triggered, mut pilot_adjusted_row_rate) = (false, row_rate);
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_pilot_triggered` instead
+
+warning: variable `pilot_adjusted_row_rate` is assigned to, but never used
+   --> src/query/executor/col_pipeline.rs:207:35
+    |
+207 |         let (mut pilot_triggered, mut pilot_adjusted_row_rate) = (false, row_rate);
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_pilot_adjusted_row_rate` instead
+
+warning: value assigned to `pilot_triggered` is never read
+   --> src/query/executor/col_pipeline.rs:623:17
+    |
+623 |                 pilot_triggered = true;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `pilot_adjusted_row_rate` is never read
+   --> src/query/executor/col_pipeline.rs:624:17
+    |
+624 |                 pilot_adjusted_row_rate = res.current_row_rate;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `pilot_adj`
+   --> src/query/executor/col_pipeline.rs:739:434
+    |
+739 | ...: bool, pilot: bool, pilot_adj: bool, pilot_rate: f64, needed_indices: &[usize], g_map: &HashMap<GroupKey, (f64, u64)>, rayon...
+    |                         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pilot_adj`
+
+warning: field `reader_idx` is never read
+  --> src/storage/compaction/merger.rs:14:13
+   |
+12 |         struct MergeEntry {
+   |                ---------- field in this struct
+13 |             row: crate::types::RowDisk,
+14 |             reader_idx: usize,
+   |             ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `lsm` (lib) generated 26 warnings (run `cargo fix --lib -p lsm` to apply 21 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.25s
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.95, k=2, Seed=42
+Loading data from data/stress_test.csv...
+Loaded 8898390 rows from CSV in 4424.62ms
+Flushing rows to SSTables...
+Flush successful in 12810.48ms
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.95, k=2, Seed=42
+Triggering manual compaction...
+DEBUG: StcsCompactor scanning "data"
+DEBUG: Found .aqe candidate: data/load_0.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_1.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_2.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_3.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_4.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_5.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_6.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_7.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_8.aqe (75813057 bytes)
+DEBUG: Found .aqe candidate: data/load_9.aqe (75813057 bytes)
+Compaction finished: 1 segments created in 18.363358893s
+Building Rust binary in release mode...
+Generating 10,000,000 rows via Python tool...
+Data already generated, skipping Python generator...
+Loading CSV into LSM storage...
+Compacting to columnar format...
+Generation, Load & Compaction completed in 36.66s
+
+--- SQLite Baseline Setup (10M Rows, Disk-Backed) ---
+SQLite Loaded 10M rows in 17.96s
+
+--- Benchmarking Queries (Rust AQE vs SQLite) ---
+Query Type                | Source     | Result                           | Time (ms)  | Conf     | Rows    
+---------------------------------------------------------------------------------------------------------
+COUNT WHERE STATUS=0      | SQLite     | 6228826.00                       | 576.22     | 1.0000   | 10.0M   
+COUNT WHERE STATUS=0      | AQE 0.7    | 6227600.71                       | 226.37     | 0.9900   | 2,669.6k
+COUNT WHERE STATUS=0      | AQE 0.9    | 6201880.30                       | 152.08     | 0.9900   | 880.1k  
+COUNT WHERE STATUS=0      | AQE 0.99   | 5951294.63                       | 111.80     | 0.9900   | 79.8k   
+SUM WHERE COUNTRY=1       | SQLite     | 227069046.00                     | 639.62     | 1.0000   | 10.0M   
+SUM WHERE COUNTRY=1       | AQE 0.7    | 226631616.04                     | 710.90     | 0.9900   | 2,668.8k
+SUM WHERE COUNTRY=1       | AQE 0.9    | 227703439.65                     | 649.55     | 0.9900   | 890.4k  
+SUM WHERE COUNTRY=1       | AQE 0.99   | 226781089.98                     | 672.87     | 0.9900   | 89.2k   
+AVG GLOBAL                | SQLite     | 1656730882564.22                 | 473.02     | 1.0000   | 10.0M   
+AVG GLOBAL                | AQE 0.7    | 1656730882564.22                 | 2.31       | 1.0000   | 0       
+AVG GLOBAL                | AQE 0.9    | 1656730882564.22                 | 2.02       | 1.0000   | 0       
+AVG GLOBAL                | AQE 0.99   | 1656730882564.22                 | 1.97       | 1.0000   | 0       
+COUNT GRP BY COUNTRY      | SQLite     | {'0': 1780481, '1': 1779761, '2': 1779887, '3': 1780074, '4': 1778187} | 3535.84    | 1.0000   | 10.0M   
+COUNT GRP BY COUNTRY      | AQE 0.7    | {'0': '1780762.24', '1': '1779732.58', '2': '1779317.00', '3': '1783559.69', '4': '1775018.49'} | 203.23     | 0.9900   | 1,434.6k
+COUNT GRP BY COUNTRY      | AQE 0.9    | {'0': '1791110.62', '1': '1863517.22', '2': '1783488.87', '3': '1638675.67', '4': '1821597.61'} | 163.82     | 0.9900   | 2.3k    
+
+Stress Test Complete.

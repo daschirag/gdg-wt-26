@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/tba/projects/lsm/tools/gen_data.py", line 81, in <module>
+    generate_data(args.num, schema, args.output, args.seed)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tba/projects/lsm/tools/gen_data.py", line 60, in generate_data
+    writer.writerow(row)
+    ~~~~~~~~~~~~~~~^^^^^
+KeyboardInterrupt

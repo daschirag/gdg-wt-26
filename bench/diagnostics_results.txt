@@ -1,0 +1,378 @@
+    Finished `release` profile [optimized] target(s) in 7.67s
+Building AQE...
+
+=== AQE QUERY: SELECT COUNT(*) FROM logs GROUP BY country (acc=0.99) ===
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.7, k=2, Seed=42
+[PROFILE] query=Q1
+[PROFILE] total_ms=289.72
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0503
+[PROFILE] stage.col_open_ms=74.2097
+[PROFILE] stage.filter_ms=95.1499
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.2546
+[PROFILE] stage.aggregation_ms=114.0457
+[PROFILE] io.segments_opened=2
+[PROFILE] io.col_files_opened=2
+[PROFILE] io.bytes_read=19204792
+[PROFILE] io.row_groups_evaluated=1954
+[PROFILE] io.row_groups_sampled=1954
+[PROFILE] rows.total_possible=2000000
+[PROFILE] rows.after_filter=2000000
+[PROFILE] rows.after_sample=0
+[PROFILE] rows.after_dedup=2000000
+[PROFILE] sampling.sst_rate=0.3000
+[PROFILE] sampling.row_rate=0.3000
+[PROFILE] sampling.effective_rate=0.0000
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=false
+[DIAG] group_by_col_type=u8
+[DIAG] filter_col_type=None
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.3000
+[DIAG] col_files_per_query=["country.col"]
+Execution Time: 289.802305ms
+Rows Scanned: 2000000
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+GROUP: 0|4460377.777777777|High
+GROUP: 1|4432044.444444444|High
+GROUP: 2|4440622.222222221|High
+GROUP: 3|4448288.888888888|High
+GROUP: 4|4440888.888888888|High
+Storage Path: Columnar
+Effective Sampling Rate: 1.0000
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]
+
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running `target/release/lsm query 'SELECT COUNT(*) FROM logs GROUP BY country' --accuracy 0.99`
+[FIX2-DIAG] total_segments=9 sampled_segments=2
+[FIX2-DIAG] sst_rate=0.30000000000000004 row_rate=0.30000000000000004
+[COL] seg_idx=0 col_name=country read_type=full start_row=0 end_row=1000000 rows_requested=1000000 bytes_read=9602396 read_ms=6.2992 decode_ms=28.1155 total_ms=34.4175
+[COL] seg_idx=1 col_name=country read_type=full start_row=0 end_row=1000000 rows_requested=1000000 bytes_read=9602396 read_ms=6.5684 decode_ms=31.7941 total_ms=38.3648
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=35.1749 seg_col_files_opened=1 seg_bytes_read=9602396 seg_row_groups_total=977 seg_row_groups_sampled=977 seg_rows_after_filter=1000000 seg_rows_after_sample=0 seg_filter_ms=45.2536 seg_late_mat_ms=0.0000 seg_aggregation_ms=55.6155 seg_total_ms=264.5246
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=39.0349 seg_col_files_opened=1 seg_bytes_read=9602396 seg_row_groups_total=977 seg_row_groups_sampled=977 seg_rows_after_filter=1000000 seg_rows_after_sample=0 seg_filter_ms=49.8963 seg_late_mat_ms=0.0000 seg_aggregation_ms=58.4302 seg_total_ms=285.6217
+[SCAN] query=Q1
+[SCAN] total_ms=289.6441
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=2
+[SCAN] total_segments_skipped=7
+[SCAN] total_col_files_opened=2
+[SCAN] total_col_files_skipped=8
+[SCAN] total_bytes_read=19204792
+[SCAN] total_bytes_available=760000000
+[SCAN] bytes_read_pct=0.0253
+[SCAN] total_row_groups_evaluated=1954
+[SCAN] total_row_groups_scanned=1954
+[SCAN] total_row_groups_skipped=0
+[SCAN] total_rows_possible=2000000
+[SCAN] total_rows_after_filter=2000000
+[SCAN] total_rows_after_sample=0
+[SCAN] avg_ms_per_segment=144.8221
+[SCAN] avg_ms_per_row_group=0.1482
+[SCAN] avg_ms_per_1k_rows=0.0000
+[SCAN] throughput_mrows_per_sec=0.0000
+[SCAN] throughput_mb_per_sec=66.3048
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+
+
+=== SQLITE QUERY: SELECT COUNT(*) FROM logs GROUP BY country ===
+400793
+400156
+399630
+399602
+399819
+Memory Used:                         2176384 (max 4340536) bytes
+Number of Outstanding Allocations:   659 (max 708)
+Number of Pcache Overflow Bytes:     2022120 (max 2022120) bytes
+Largest Allocation:                  2048000 bytes
+Largest Pcache Allocation:           4368 bytes
+Lookaside Slots Used:                67 (max 105)
+Successful lookaside attempts:       167
+Lookaside failures due to size:      2
+Lookaside failures due to OOM:       0
+Pager Heap Usage:                    2102672 bytes
+Page cache hits:                     2
+Page cache misses:                   17933
+Page cache writes:                   0
+Page cache spills:                   0
+Temporary data spilled to disk:      16000072
+Schema Heap Usage:                   928 bytes
+Statement Heap/Lookaside Usage:      6816 bytes
+Fullscan Steps:                      1999999
+Sort Operations:                     1
+Autoindex Inserts:                   0
+Virtual Machine Steps:               22000080
+Reprepare operations:                0
+Number of times run:                 1
+Memory used by prepared stmt:        6816
+Bytes received by read():            89469168
+Bytes sent to write():               16000072
+Read() system calls:                 21884
+Write() system calls:                3931
+Bytes read from storage:             0
+Bytes written to storage:            10100736
+Cancelled write bytes:               10051584
+Run Time: real 1.076235 user 1.020063 sys 0.049539
+
+
+
+=== AQE QUERY: SELECT SUM(level) FROM logs WHERE level > 0 (acc=0.999) ===
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.7, k=2, Seed=42
+[PROFILE] query=Q2
+[PROFILE] total_ms=75.12
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0246
+[PROFILE] stage.col_open_ms=0.4016
+[PROFILE] stage.filter_ms=28.6414
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.1837
+[PROFILE] stage.aggregation_ms=29.2846
+[PROFILE] io.segments_opened=2
+[PROFILE] io.col_files_opened=620
+[PROFILE] io.bytes_read=5071872
+[PROFILE] io.row_groups_evaluated=1954
+[PROFILE] io.row_groups_sampled=620
+[PROFILE] rows.total_possible=2000000
+[PROFILE] rows.after_filter=633984
+[PROFILE] rows.after_sample=633984
+[PROFILE] rows.after_dedup=633984
+[PROFILE] sampling.sst_rate=0.3000
+[PROFILE] sampling.row_rate=0.3000
+[PROFILE] sampling.effective_rate=0.3170
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=false
+[DIAG] group_by_col_type=None
+[DIAG] filter_col_type=u8
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.3000
+[DIAG] col_files_per_query=["level.col"]
+Execution Time: 75.174353ms
+Rows Scanned: 633984
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+SCALAR: 0|High
+Storage Path: Columnar
+Effective Sampling Rate: 1.0000
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]
+
+    Finished `release` profile [optimized] target(s) in 0.08s
+     Running `target/release/lsm query 'SELECT SUM(level) FROM logs WHERE level > 0' --accuracy 0.999`
+[FIX2-DIAG] total_segments=9 sampled_segments=2
+[FIX2-DIAG] sst_rate=0.30000000000000004 row_rate=0.30000000000000004
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.2024 seg_col_files_opened=310 seg_bytes_read=2535936 seg_row_groups_total=977 seg_row_groups_sampled=310 seg_rows_after_filter=316992 seg_rows_after_sample=316992 seg_filter_ms=13.6347 seg_late_mat_ms=0.0000 seg_aggregation_ms=14.1163 seg_total_ms=66.9528
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.1992 seg_col_files_opened=310 seg_bytes_read=2535936 seg_row_groups_total=977 seg_row_groups_sampled=310 seg_rows_after_filter=316992 seg_rows_after_sample=316992 seg_filter_ms=15.0066 seg_late_mat_ms=0.0000 seg_aggregation_ms=15.1683 seg_total_ms=72.2872
+[SCAN] query=Q2
+[SCAN] total_ms=75.0709
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=2
+[SCAN] total_segments_skipped=7
+[SCAN] total_col_files_opened=620
+[SCAN] total_col_files_skipped=18446744073709551006
+[SCAN] total_bytes_read=5071872
+[SCAN] total_bytes_available=760000000
+[SCAN] bytes_read_pct=0.0067
+[SCAN] total_row_groups_evaluated=1954
+[SCAN] total_row_groups_scanned=620
+[SCAN] total_row_groups_skipped=1334
+[SCAN] total_rows_possible=2000000
+[SCAN] total_rows_after_filter=633984
+[SCAN] total_rows_after_sample=633984
+[SCAN] avg_ms_per_segment=37.5354
+[SCAN] avg_ms_per_row_group=0.1211
+[SCAN] avg_ms_per_1k_rows=0.1184
+[SCAN] throughput_mrows_per_sec=8.4451
+[SCAN] throughput_mb_per_sec=67.5611
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+
+
+=== SQLITE QUERY: SELECT SUM(level) FROM logs WHERE level > 0 ===
+999650112
+Memory Used:                         2174016 (max 2174048) bytes
+Number of Outstanding Allocations:   658 (max 659)
+Number of Pcache Overflow Bytes:     2022120 (max 2022120) bytes
+Largest Allocation:                  87360 bytes
+Largest Pcache Allocation:           4368 bytes
+Lookaside Slots Used:                56 (max 108)
+Successful lookaside attempts:       145
+Lookaside failures due to size:      1
+Lookaside failures due to OOM:       0
+Pager Heap Usage:                    2102672 bytes
+Page cache hits:                     2
+Page cache misses:                   17933
+Page cache writes:                   0
+Page cache spills:                   0
+Temporary data spilled to disk:      0
+Schema Heap Usage:                   928 bytes
+Statement Heap/Lookaside Usage:      4240 bytes
+Fullscan Steps:                      1999999
+Sort Operations:                     0
+Autoindex Inserts:                   0
+Virtual Machine Steps:               9996053
+Reprepare operations:                0
+Number of times run:                 1
+Memory used by prepared stmt:        4240
+Bytes received by read():            73469097
+Bytes sent to write():               0
+Read() system calls:                 17953
+Write() system calls:                0
+Bytes read from storage:             0
+Bytes written to storage:            0
+Cancelled write bytes:               0
+Run Time: real 0.331064 user 0.301495 sys 0.026867
+
+
+
+=== AQE QUERY: SELECT COUNT(*) FROM logs WHERE level > 500 (acc=0.7) ===
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.7, k=2, Seed=42
+[PROFILE] query=Q3
+[PROFILE] total_ms=80.73
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0198
+[PROFILE] stage.col_open_ms=0.3837
+[PROFILE] stage.filter_ms=31.4550
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.2131
+[PROFILE] stage.aggregation_ms=31.5252
+[PROFILE] io.segments_opened=2
+[PROFILE] io.col_files_opened=620
+[PROFILE] io.bytes_read=5071872
+[PROFILE] io.row_groups_evaluated=1954
+[PROFILE] io.row_groups_sampled=620
+[PROFILE] rows.total_possible=2000000
+[PROFILE] rows.after_filter=633984
+[PROFILE] rows.after_sample=633984
+[PROFILE] rows.after_dedup=633984
+[PROFILE] sampling.sst_rate=0.3000
+[PROFILE] sampling.row_rate=0.3000
+[PROFILE] sampling.effective_rate=0.3170
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=false
+[DIAG] group_by_col_type=None
+[DIAG] filter_col_type=u8
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.3000
+[DIAG] col_files_per_query=["level.col"]
+Execution Time: 80.80448ms
+Rows Scanned: 633984
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+SCALAR: 7044266.666666665|High
+Storage Path: Columnar
+Effective Sampling Rate: 1.0000
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]
+
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/lsm query 'SELECT COUNT(*) FROM logs WHERE level > 500' --accuracy 0.7`
+[FIX2-DIAG] total_segments=9 sampled_segments=2
+[FIX2-DIAG] sst_rate=0.30000000000000004 row_rate=0.30000000000000004
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.1999 seg_col_files_opened=310 seg_bytes_read=2535936 seg_row_groups_total=977 seg_row_groups_sampled=310 seg_rows_after_filter=316992 seg_rows_after_sample=316992 seg_filter_ms=16.0912 seg_late_mat_ms=0.0000 seg_aggregation_ms=16.1594 seg_total_ms=78.3137
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.1838 seg_col_files_opened=310 seg_bytes_read=2535936 seg_row_groups_total=977 seg_row_groups_sampled=310 seg_rows_after_filter=316992 seg_rows_after_sample=316992 seg_filter_ms=15.3638 seg_late_mat_ms=0.0000 seg_aggregation_ms=15.3658 seg_total_ms=74.5844
+[SCAN] query=Q3
+[SCAN] total_ms=80.6438
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=2
+[SCAN] total_segments_skipped=7
+[SCAN] total_col_files_opened=620
+[SCAN] total_col_files_skipped=18446744073709551006
+[SCAN] total_bytes_read=5071872
+[SCAN] total_bytes_available=760000000
+[SCAN] bytes_read_pct=0.0067
+[SCAN] total_row_groups_evaluated=1954
+[SCAN] total_row_groups_scanned=620
+[SCAN] total_row_groups_skipped=1334
+[SCAN] total_rows_possible=2000000
+[SCAN] total_rows_after_filter=633984
+[SCAN] total_rows_after_sample=633984
+[SCAN] avg_ms_per_segment=40.3219
+[SCAN] avg_ms_per_row_group=0.1301
+[SCAN] avg_ms_per_1k_rows=0.1272
+[SCAN] throughput_mrows_per_sec=7.8615
+[SCAN] throughput_mb_per_sec=62.8923
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+
+
+=== SQLITE QUERY: SELECT COUNT(*) FROM logs WHERE level > 500 ===
+1102002
+Memory Used:                         2174016 (max 2174048) bytes
+Number of Outstanding Allocations:   658 (max 659)
+Number of Pcache Overflow Bytes:     2022120 (max 2022120) bytes
+Largest Allocation:                  87360 bytes
+Largest Pcache Allocation:           4368 bytes
+Lookaside Slots Used:                56 (max 106)
+Successful lookaside attempts:       142
+Lookaside failures due to size:      1
+Lookaside failures due to OOM:       0
+Pager Heap Usage:                    2102672 bytes
+Page cache hits:                     2
+Page cache misses:                   17933
+Page cache writes:                   0
+Page cache spills:                   0
+Temporary data spilled to disk:      0
+Schema Heap Usage:                   928 bytes
+Statement Heap/Lookaside Usage:      4240 bytes
+Fullscan Steps:                      1999999
+Sort Operations:                     0
+Autoindex Inserts:                   0
+Virtual Machine Steps:               7102013
+Reprepare operations:                0
+Number of times run:                 1
+Memory used by prepared stmt:        4240
+Bytes received by read():            73469097
+Bytes sent to write():               0
+Read() system calls:                 17953
+Write() system calls:                0
+Bytes read from storage:             0
+Bytes written to storage:            0
+Cancelled write bytes:               0
+Run Time: real 0.321595 user 0.291696 sys 0.025746
+
+

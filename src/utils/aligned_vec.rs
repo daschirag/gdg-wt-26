@@ -1,9 +1,9 @@
-use std::ops::{Deref, DerefMut};
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{Visitor, SeqAccess};
+use serde::de::{SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
-use std::alloc::{alloc, dealloc, Layout, handle_alloc_error};
+use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::ptr;
 
 /// A simple Vec-like structure that ensures memory is aligned for SIMD operations.
@@ -69,10 +69,8 @@ impl<T> AlignedVec<T> {
             };
         }
 
-        let layout = Layout::from_size_align(
-            capacity * std::mem::size_of::<T>(),
-            Self::ALIGN
-        ).expect("Invalid layout");
+        let layout = Layout::from_size_align(capacity * std::mem::size_of::<T>(), Self::ALIGN)
+            .expect("Invalid layout");
 
         let ptr = unsafe { alloc(layout) as *mut T };
         if ptr.is_null() {
@@ -86,7 +84,10 @@ impl<T> AlignedVec<T> {
         }
     }
 
-    pub fn from_slice(slice: &[T]) -> Self where T: Clone {
+    pub fn from_slice(slice: &[T]) -> Self
+    where
+        T: Clone,
+    {
         let mut av = Self::with_capacity(slice.len());
         for item in slice {
             av.push(item.clone());
@@ -106,18 +107,15 @@ impl<T> AlignedVec<T> {
 
     fn grow(&mut self) {
         let new_cap = if self.cap == 0 { 8 } else { self.cap * 2 };
-        let new_layout = Layout::from_size_align(
-            new_cap * std::mem::size_of::<T>(),
-            Self::ALIGN
-        ).expect("Invalid layout");
+        let new_layout = Layout::from_size_align(new_cap * std::mem::size_of::<T>(), Self::ALIGN)
+            .expect("Invalid layout");
 
         let new_ptr = if self.cap == 0 {
             unsafe { alloc(new_layout) as *mut T }
         } else {
-            let old_layout = Layout::from_size_align(
-                self.cap * std::mem::size_of::<T>(),
-                Self::ALIGN
-            ).expect("Invalid layout");
+            let old_layout =
+                Layout::from_size_align(self.cap * std::mem::size_of::<T>(), Self::ALIGN)
+                    .expect("Invalid layout");
             unsafe {
                 let p = alloc(new_layout) as *mut T;
                 if !p.is_null() {
@@ -172,10 +170,8 @@ impl<T> Drop for AlignedVec<T> {
                 }
             }
             // Deallocate memory
-            let layout = Layout::from_size_align(
-                self.cap * std::mem::size_of::<T>(),
-                Self::ALIGN
-            ).expect("Invalid layout");
+            let layout = Layout::from_size_align(self.cap * std::mem::size_of::<T>(), Self::ALIGN)
+                .expect("Invalid layout");
             unsafe {
                 dealloc(self.ptr as *mut u8, layout);
             }

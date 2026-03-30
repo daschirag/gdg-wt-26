@@ -19,4 +19,4 @@ type = "u64"
 
 [[columns]]
 name = "level"
-type = "u8"
+type = "i64"

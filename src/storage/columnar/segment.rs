@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-use crate::types::SSTableMetadata;
 use crate::errors::StorageError;
+use crate::types::SSTableMetadata;
+use std::path::PathBuf;
 
 pub struct Segment {
     pub path: PathBuf,
@@ -18,7 +18,7 @@ impl Segment {
         let metadata: SSTableMetadata = toml::from_str(&content).map_err(|e| {
             StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
         })?;
-        
+
         Ok(Self { path, metadata })
     }
 }

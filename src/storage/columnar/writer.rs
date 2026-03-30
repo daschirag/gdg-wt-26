@@ -1,19 +1,43 @@
+use crate::errors::StorageError;
+use crate::storage::columnar::encoding::delta::DeltaEncoder;
+use crate::storage::columnar::encoding::rle::{RleEncoder, RleRunI64};
+use crate::types::{RowDisk, SSTableMetadata, Value};
 use std::fs;
 use std::path::Path;
-use crate::types::{RowDisk, SSTableMetadata, Value};
-use crate::storage::columnar::encoding::rle::RleEncoder;
-use crate::storage::columnar::encoding::delta::DeltaEncoder;
-use crate::errors::StorageError;
 
 pub struct ColumnarWriter;
 
+const RLE_I64_MAGIC: [u8; 4] = *b"RLI4";
+const RLE_I64_VERSION: u32 = 1;
+
+fn serialize_rle_i64(runs: &[RleRunI64]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(16 + std::mem::size_of_val(runs));
+    bytes.extend_from_slice(&RLE_I64_MAGIC);
+    bytes.extend_from_slice(&RLE_I64_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&(runs.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(bytemuck::cast_slice(runs));
+    bytes
+}
+
 impl ColumnarWriter {
-    pub fn write_segment(segment_path: &Path, rows: &[RowDisk], config: &crate::config::Config, fpr: f64) -> Result<(), StorageError> {
+    pub fn write_segment(
+        segment_path: &Path,
+        rows: &[RowDisk],
+        config: &crate::config::Config,
+        fpr: f64,
+    ) -> Result<(), StorageError> {
         Self::write_segment_from_iter(segment_path, rows.iter().cloned(), config, fpr)
     }
 
-    pub fn write_segment_from_iter<I>(segment_path: &Path, row_iter: I, config: &crate::config::Config, fpr: f64) -> Result<(), StorageError> 
-    where I: Iterator<Item = RowDisk> {
+    pub fn write_segment_from_iter<I>(
+        segment_path: &Path,
+        row_iter: I,
+        config: &crate::config::Config,
+        fpr: f64,
+    ) -> Result<(), StorageError>
+    where
+        I: Iterator<Item = RowDisk>,
+    {
         let rows: Vec<RowDisk> = row_iter.collect(); // Still collecting for now to handle transposition easily
         if rows.is_empty() {
             return Ok(());
@@ -45,7 +69,7 @@ impl ColumnarWriter {
             let col_data = &columns[i];
             let file_name = format!("{}.col", col_schema.name);
             let file_path = segment_path.join(file_name);
-            
+
             let mut col_sum = 0.0;
             let mut col_min = f64::MAX;
             let mut col_max = f64::MIN;
@@ -77,34 +101,47 @@ impl ColumnarWriter {
 
             let distinct_count = distinct_values.len();
             let row_count = col_data.len();
-            
+
             // Heuristic Selection
             let (encoding, bytes) = if distinct_count < row_count / 10 && row_count > 0 {
                 // Low cardinality -> RLE
-                let i64_data: Vec<i64> = col_data.iter().map(|v| match v {
-                    Value::Int(iv) => *iv,
-                    Value::Float(fv) => *fv as i64,
-                    _ => 0,
-                }).collect();
-                let encoded = RleEncoder::encode::<i64>(&i64_data);
-                ("rle".to_string(), bincode::serialize(&encoded).map_err(|e| {
-                    StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
-                })?)
+                let i64_data: Vec<i64> = col_data
+                    .iter()
+                    .map(|v| match v {
+                        Value::Int(iv) => *iv,
+                        Value::Float(fv) => *fv as i64,
+                        _ => 0,
+                    })
+                    .collect();
+                let encoded = RleEncoder::encode_i64(&i64_data);
+                ("rle".to_string(), serialize_rle_i64(&encoded))
             } else if col_schema.name == "timestamp" || col_schema.name == "user_id" {
                 // Monotonic-like -> Delta
-                let i64_data: Vec<i64> = col_data.iter().map(|v| match v {
-                    Value::Int(iv) => *iv,
-                    _ => 0,
-                }).collect();
+                let i64_data: Vec<i64> = col_data
+                    .iter()
+                    .map(|v| match v {
+                        Value::Int(iv) => *iv,
+                        _ => 0,
+                    })
+                    .collect();
                 let encoded = DeltaEncoder::encode_i64(&i64_data);
-                ("delta".to_string(), bincode::serialize(&encoded).map_err(|e| {
-                    StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
-                })?)
+                (
+                    "delta".to_string(),
+                    bincode::serialize(&encoded).map_err(|e| {
+                        StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
+                    })?,
+                )
             } else {
                 // High cardinality / Random -> Bincode
                 // Optimize: Serialize as compact AlignedVec instead of Vec<Value>
-                if col_schema.name == "timestamp" || col_schema.name == "user_id" || col_schema.name == "status" || col_schema.name == "country" || col_schema.name == "level" {
-                    let mut aligned = crate::utils::aligned_vec::AlignedVec::with_capacity(col_data.len());
+                if col_schema.name == "timestamp"
+                    || col_schema.name == "user_id"
+                    || col_schema.name == "status"
+                    || col_schema.name == "country"
+                    || col_schema.name == "level"
+                {
+                    let mut aligned =
+                        crate::utils::aligned_vec::AlignedVec::with_capacity(col_data.len());
                     for v in col_data {
                         aligned.push(match v {
                             Value::Int(iv) => *iv,
@@ -112,11 +149,18 @@ impl ColumnarWriter {
                             _ => 0,
                         });
                     }
-                    ("bincode".to_string(), bincode::serialize(&aligned).map_err(|e| {
-                        StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
-                    })?)
+                    (
+                        "bincode".to_string(),
+                        bincode::serialize(&aligned).map_err(|e| {
+                            StorageError::WriteError(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                e,
+                            ))
+                        })?,
+                    )
                 } else {
-                    let mut aligned = crate::utils::aligned_vec::AlignedVec::with_capacity(col_data.len());
+                    let mut aligned =
+                        crate::utils::aligned_vec::AlignedVec::with_capacity(col_data.len());
                     for v in col_data {
                         aligned.push(match v {
                             Value::Float(fv) => *fv,
@@ -124,23 +168,32 @@ impl ColumnarWriter {
                             _ => 0.0,
                         });
                     }
-                    ("bincode".to_string(), bincode::serialize(&aligned).map_err(|e| {
-                        StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
-                    })?)
+                    (
+                        "bincode".to_string(),
+                        bincode::serialize(&aligned).map_err(|e| {
+                            StorageError::WriteError(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                e,
+                            ))
+                        })?,
+                    )
                 }
             };
 
             let crc32 = crc32fast::hash(&bytes);
             fs::write(file_path, bytes)?;
 
-            column_metadata.insert(col_schema.name.clone(), crate::types::ColumnMetadata {
-                encoding,
-                sum: col_sum,
-                min: if col_min == f64::MAX { 0.0 } else { col_min },
-                max: if col_max == f64::MIN { 0.0 } else { col_max },
-                distinct_count: distinct_count as u64,
-                crc32,
-            });
+            column_metadata.insert(
+                col_schema.name.clone(),
+                crate::types::ColumnMetadata {
+                    encoding,
+                    sum: col_sum,
+                    min: if col_min == f64::MAX { 0.0 } else { col_min },
+                    max: if col_max == f64::MIN { 0.0 } else { col_max },
+                    distinct_count: distinct_count as u64,
+                    crc32,
+                },
+            );
         }
 
         let mut metadata = SSTableMetadata {

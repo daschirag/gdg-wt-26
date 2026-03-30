@@ -48,7 +48,9 @@ def generate_data(num_rows, schema, output_path, seed=42):
                 elif name == "timestamp":
                     val = random.randint(start_ts, end_ts)
                 else:
-                    if col_type in ["u64", "i64", "u32", "u8", "i8"]:
+                    if col_type in ["u8", "i8"]:
+                        val = random.randint(0, 255)
+                    elif col_type in ["u64", "i64", "u32"]:
                         val = random.randint(0, 1000)
                     elif col_type in ["f64", "f32"]:
                         val = round(random.uniform(0, 1000), 2)

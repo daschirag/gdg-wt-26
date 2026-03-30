@@ -1,0 +1,246 @@
+Running Q1...
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/lsm query 'SELECT COUNT(*) FROM logs GROUP BY country'`
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.99, k=2, Seed=42
+[DEBUG] Chosen execution path: Columnar { segments: ["data/segments/seg_000_split_000", "data/segments/seg_000_split_001", "data/segments/seg_000_split_002", "data/segments/seg_000_split_003", "data/segments/seg_000_split_004", "data/segments/seg_000_split_005", "data/segments/seg_000_split_006", "data/segments/seg_000_split_007", "data/segments/seg_000_split_008"], columns_needed: ["user_id", "country"] }
+[DEBUG] Path: Columnar (9 segments)
+[DEBUG] ColumnarPipeline::execute started
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.0000 seg_col_files_opened=1 seg_bytes_read=9600216 seg_row_groups_total=800018 seg_row_groups_sampled=800018 seg_rows_after_filter=0 seg_rows_after_sample=0 seg_filter_ms=0.0000 seg_late_mat_ms=0.0000 seg_aggregation_ms=7.5941 seg_total_ms=36.8265
+[SCAN] query=Q1
+[SCAN] total_ms=39.1615
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=1
+[SCAN] total_segments_skipped=8
+[SCAN] total_col_files_opened=1
+[SCAN] total_col_files_skipped=4
+[SCAN] total_bytes_read=9600216
+[SCAN] total_bytes_available=355935600
+[SCAN] bytes_read_pct=0.0270
+[SCAN] total_row_groups_evaluated=800018
+[SCAN] total_row_groups_scanned=800018
+[SCAN] total_row_groups_skipped=0
+[SCAN] total_rows_possible=1000000
+[SCAN] total_rows_after_filter=0
+[SCAN] total_rows_after_sample=0
+[SCAN] avg_ms_per_segment=39.1615
+[SCAN] avg_ms_per_row_group=0.0000
+[SCAN] avg_ms_per_1k_rows=0.0000
+[SCAN] throughput_mrows_per_sec=0.0000
+[SCAN] throughput_mb_per_sec=245.1441
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+[PROFILE] query=Q1
+[PROFILE] total_ms=39.37
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0278
+[PROFILE] stage.col_open_ms=0.0000
+[PROFILE] stage.filter_ms=0.0000
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.0000
+[PROFILE] stage.aggregation_ms=7.5941
+[PROFILE] io.segments_opened=1
+[PROFILE] io.col_files_opened=1
+[PROFILE] io.bytes_read=9600216
+[PROFILE] io.row_groups_evaluated=800018
+[PROFILE] io.row_groups_sampled=800018
+[PROFILE] rows.total_possible=1000000
+[PROFILE] rows.after_filter=0
+[PROFILE] rows.after_sample=0
+[PROFILE] rows.after_dedup=0
+[PROFILE] sampling.sst_rate=0.0100
+[PROFILE] sampling.row_rate=0.0100
+[PROFILE] sampling.effective_rate=0.0000
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=false
+[DIAG] group_by_col_type=u8
+[DIAG] filter_col_type=None
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.0100
+[DIAG] col_files_per_query=["country.col"]
+Execution Time: 39.500972ms
+Rows Scanned: 0
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+Storage Path: Columnar
+Effective Sampling Rate: 0.0000
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]
+Running Q2...
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/lsm query 'SELECT SUM(level) FROM logs WHERE level > 0'`
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.999, k=2, Seed=42
+[DEBUG] Chosen execution path: Columnar { segments: ["data/segments/seg_000_split_000", "data/segments/seg_000_split_001", "data/segments/seg_000_split_002", "data/segments/seg_000_split_003", "data/segments/seg_000_split_004", "data/segments/seg_000_split_005", "data/segments/seg_000_split_006", "data/segments/seg_000_split_007", "data/segments/seg_000_split_008"], columns_needed: ["level"] }
+[DEBUG] Path: Columnar (9 segments)
+[DEBUG] ColumnarPipeline::execute started
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.0000 seg_col_files_opened=1 seg_bytes_read=11952468 seg_row_groups_total=0 seg_row_groups_sampled=0 seg_rows_after_filter=9982 seg_rows_after_sample=9982 seg_filter_ms=0.0000 seg_late_mat_ms=0.0000 seg_aggregation_ms=8.8240 seg_total_ms=34.7404
+[SCAN] query=Q2
+[SCAN] total_ms=37.1271
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=1
+[SCAN] total_segments_skipped=8
+[SCAN] total_col_files_opened=1
+[SCAN] total_col_files_skipped=4
+[SCAN] total_bytes_read=11952468
+[SCAN] total_bytes_available=355935600
+[SCAN] bytes_read_pct=0.0336
+[SCAN] total_row_groups_evaluated=0
+[SCAN] total_row_groups_scanned=0
+[SCAN] total_row_groups_skipped=0
+[SCAN] total_rows_possible=1000000
+[SCAN] total_rows_after_filter=9982
+[SCAN] total_rows_after_sample=9982
+[SCAN] avg_ms_per_segment=37.1271
+[SCAN] avg_ms_per_row_group=0.0000
+[SCAN] avg_ms_per_1k_rows=3.7194
+[SCAN] throughput_mrows_per_sec=0.2689
+[SCAN] throughput_mb_per_sec=321.9342
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+[PROFILE] query=Q2
+[PROFILE] total_ms=37.32
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0217
+[PROFILE] stage.col_open_ms=0.0000
+[PROFILE] stage.filter_ms=0.0000
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.0000
+[PROFILE] stage.aggregation_ms=8.8240
+[PROFILE] io.segments_opened=1
+[PROFILE] io.col_files_opened=1
+[PROFILE] io.bytes_read=11952468
+[PROFILE] io.row_groups_evaluated=0
+[PROFILE] io.row_groups_sampled=0
+[PROFILE] rows.total_possible=1000000
+[PROFILE] rows.after_filter=9982
+[PROFILE] rows.after_sample=9982
+[PROFILE] rows.after_dedup=0
+[PROFILE] sampling.sst_rate=0.0100
+[PROFILE] sampling.row_rate=0.0100
+[PROFILE] sampling.effective_rate=0.0100
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=false
+[DIAG] group_by_col_type=None
+[DIAG] filter_col_type=u8
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.0100
+[DIAG] col_files_per_query=["level.col"]
+Execution Time: 37.455978ms
+Rows Scanned: 10015
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+SCALAR: 1129601520.5302045|High
+Storage Path: Columnar
+Effective Sampling Rate: 0.0011
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]
+Running Q3...
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/lsm query 'SELECT COUNT(*) FROM logs WHERE level > 500'`
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.7, k=2, Seed=42
+[DEBUG] Chosen execution path: Columnar { segments: ["data/segments/seg_000_split_000", "data/segments/seg_000_split_001", "data/segments/seg_000_split_002", "data/segments/seg_000_split_003", "data/segments/seg_000_split_004", "data/segments/seg_000_split_005", "data/segments/seg_000_split_006", "data/segments/seg_000_split_007", "data/segments/seg_000_split_008"], columns_needed: ["user_id", "level"] }
+[DEBUG] Path: Columnar (9 segments)
+[DEBUG] ColumnarPipeline::execute started
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.0000 seg_col_files_opened=1 seg_bytes_read=11952468 seg_row_groups_total=0 seg_row_groups_sampled=0 seg_rows_after_filter=0 seg_rows_after_sample=0 seg_filter_ms=0.0000 seg_late_mat_ms=0.0000 seg_aggregation_ms=22.3217 seg_total_ms=42.6030
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.0000 seg_col_files_opened=1 seg_bytes_read=11953404 seg_row_groups_total=0 seg_row_groups_sampled=0 seg_rows_after_filter=0 seg_rows_after_sample=0 seg_filter_ms=0.0000 seg_late_mat_ms=0.0000 seg_aggregation_ms=23.1941 seg_total_ms=60.7157
+[SCAN] query=Q3
+[SCAN] total_ms=64.1191
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=2
+[SCAN] total_segments_skipped=7
+[SCAN] total_col_files_opened=2
+[SCAN] total_col_files_skipped=8
+[SCAN] total_bytes_read=23905872
+[SCAN] total_bytes_available=355935600
+[SCAN] bytes_read_pct=0.0672
+[SCAN] total_row_groups_evaluated=0
+[SCAN] total_row_groups_scanned=0
+[SCAN] total_row_groups_skipped=0
+[SCAN] total_rows_possible=2000000
+[SCAN] total_rows_after_filter=0
+[SCAN] total_rows_after_sample=0
+[SCAN] avg_ms_per_segment=32.0596
+[SCAN] avg_ms_per_row_group=0.0000
+[SCAN] avg_ms_per_1k_rows=0.0000
+[SCAN] throughput_mrows_per_sec=0.0000
+[SCAN] throughput_mb_per_sec=372.8353
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+[PROFILE] query=Q3
+[PROFILE] total_ms=64.50
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0284
+[PROFILE] stage.col_open_ms=0.0000
+[PROFILE] stage.filter_ms=0.0000
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.0000
+[PROFILE] stage.aggregation_ms=45.5158
+[PROFILE] io.segments_opened=2
+[PROFILE] io.col_files_opened=2
+[PROFILE] io.bytes_read=23905872
+[PROFILE] io.row_groups_evaluated=0
+[PROFILE] io.row_groups_sampled=0
+[PROFILE] rows.total_possible=2000000
+[PROFILE] rows.after_filter=0
+[PROFILE] rows.after_sample=0
+[PROFILE] rows.after_dedup=0
+[PROFILE] sampling.sst_rate=0.3000
+[PROFILE] sampling.row_rate=0.3000
+[PROFILE] sampling.effective_rate=0.0000
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=true
+[DIAG] group_by_col_type=None
+[DIAG] filter_col_type=u8
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.3000
+[DIAG] col_files_per_query=["level.col"]
+Execution Time: 64.700175ms
+Rows Scanned: 600221
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+SCALAR: 0|High
+Storage Path: Columnar
+Effective Sampling Rate: 0.0675
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]

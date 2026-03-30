@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use crate::types::{RowDisk, Value};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static GLOBAL_SEQ: AtomicU64 = AtomicU64::new(0);

@@ -1,18 +1,20 @@
-use std::path::Path;
-use crate::storage::compaction::stcs::StcsCompactor;
-use crate::storage::compaction::lcs::LcsCompactor;
-use crate::storage::compaction::merger::SegmentMerger;
 use crate::config::Config;
 use crate::errors::StorageError;
+use crate::storage::compaction::lcs::LcsCompactor;
+use crate::storage::compaction::merger::SegmentMerger;
+use crate::storage::compaction::stcs::StcsCompactor;
+use std::path::Path;
 
 pub struct CompactionEngine;
 
 impl CompactionEngine {
-    pub fn run_compaction(storage: &crate::storage::manager::StorageManager) -> Result<usize, StorageError> {
+    pub fn run_compaction(
+        storage: &crate::storage::manager::StorageManager,
+    ) -> Result<usize, StorageError> {
         let config = &storage.config;
         let sst_dir = Path::new(&storage.sst_dir);
         let segments_dir = sst_dir.join("segments");
-        
+
         // Startup Validation (FIX 2)
         Self::verify_storage_metadata(&segments_dir, config)?;
 
@@ -36,13 +38,16 @@ impl CompactionEngine {
             let seg_id = Self::next_segment_id(&segments_dir)?;
             let seg_name = format!("seg_{:03}", seg_id);
             let seg_path = segments_dir.join(seg_name);
-            
-            SegmentMerger::merge_sstables_to_segment(&bucket, &seg_path, config)?;
-            
-            // FIX 17: Update thread-safe registry
-            storage.register_segment(seg_path.to_str().unwrap().to_string());
+
+            let created_segments =
+                SegmentMerger::merge_sstables_to_segment(&bucket, &seg_path, config)?;
+
+            // FIX 17: Update thread-safe registry for all created segments
+            for path in created_segments {
+                storage.register_segment(path);
+            }
             storage.unregister_sstables(&bucket);
-            
+
             // Clean up old SSTables
             for sst in &bucket {
                 let _ = std::fs::remove_file(sst);
@@ -52,7 +57,10 @@ impl CompactionEngine {
         Ok(num_tasks)
     }
 
-    pub fn verify_storage_metadata(segments_dir: &Path, config: &Config) -> Result<(), StorageError> {
+    pub fn verify_storage_metadata(
+        segments_dir: &Path,
+        config: &Config,
+    ) -> Result<(), StorageError> {
         if !segments_dir.exists() {
             return Ok(());
         }
@@ -64,9 +72,13 @@ impl CompactionEngine {
                 let meta_path = entry.path().join("meta.toml");
                 if meta_path.exists() {
                     let content = std::fs::read_to_string(meta_path)?;
-                    let metadata: crate::types::SSTableMetadata = toml::from_str(&content).map_err(|e| {
-                        StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
-                    })?;
+                    let metadata: crate::types::SSTableMetadata = toml::from_str(&content)
+                        .map_err(|e| {
+                            StorageError::ReadError(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                e,
+                            ))
+                        })?;
 
                     for col in &config.schema.columns {
                         if !metadata.columns.contains_key(&col.name) {

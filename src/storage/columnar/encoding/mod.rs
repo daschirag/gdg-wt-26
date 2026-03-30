@@ -1,2 +1,2 @@
-pub mod rle;
 pub mod delta;
+pub mod rle;

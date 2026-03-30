@@ -1,10 +1,10 @@
-use std::sync::{Arc, RwLock};
-use crate::storage::memtable::Memtable;
-use crate::types::{RowDisk};
 use crate::config::Config;
 use crate::errors::StorageError;
 use crate::query::ast::QueryPlan;
+use crate::storage::memtable::Memtable;
+use crate::types::RowDisk;
 use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 pub struct StorageManager {
     pub memtable: RwLock<Memtable>,
@@ -76,19 +76,28 @@ impl StorageManager {
 
     pub fn put(&self, row: RowDisk) -> Result<(), StorageError> {
         let mut mem = self.memtable.write().map_err(|_| {
-            StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, "Lock poisoned"))
+            StorageError::WriteError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Lock poisoned",
+            ))
         })?;
-        
+
         mem.insert(row);
         Ok(())
     }
 
     pub fn get_all_sstables(&self) -> Vec<String> {
-        self.cached_sstables.read().unwrap_or_else(|_| panic!("SSTable cache lock poisoned")).clone()
+        self.cached_sstables
+            .read()
+            .unwrap_or_else(|_| panic!("SSTable cache lock poisoned"))
+            .clone()
     }
 
     pub fn get_all_segments(&self) -> Vec<String> {
-        self.cached_segments.read().unwrap_or_else(|_| panic!("Segment cache lock poisoned")).clone()
+        self.cached_segments
+            .read()
+            .unwrap_or_else(|_| panic!("Segment cache lock poisoned"))
+            .clone()
     }
 
     pub fn get_memtable_keys(&self) -> std::collections::HashSet<u64> {
@@ -106,9 +115,19 @@ impl StorageManager {
             if let Some(filter) = &plan.filter {
                 if let Some(val) = crate::types::get_value(row, &filter.column, &self.config) {
                     let filter_val = match val {
-                        crate::types::Value::Int(_) => filter.value.parse::<i64>().map(crate::types::Value::Int).unwrap_or(crate::types::Value::String(filter.value.clone())),
-                        crate::types::Value::Float(_) => filter.value.parse::<f64>().map(crate::types::Value::Float).unwrap_or(crate::types::Value::String(filter.value.clone())),
-                        crate::types::Value::String(_) => crate::types::Value::String(filter.value.clone()),
+                        crate::types::Value::Int(_) => filter
+                            .value
+                            .parse::<i64>()
+                            .map(crate::types::Value::Int)
+                            .unwrap_or(crate::types::Value::String(filter.value.clone())),
+                        crate::types::Value::Float(_) => filter
+                            .value
+                            .parse::<f64>()
+                            .map(crate::types::Value::Float)
+                            .unwrap_or(crate::types::Value::String(filter.value.clone())),
+                        crate::types::Value::String(_) => {
+                            crate::types::Value::String(filter.value.clone())
+                        }
                     };
 
                     include = match filter.op {

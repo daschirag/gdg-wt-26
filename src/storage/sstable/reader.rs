@@ -1,9 +1,9 @@
+use crate::errors::StorageError;
+use crate::storage::bloom::filter::BloomFilterWrapper;
+use crate::storage::sstable::writer::MAGIC_BYTES;
+use crate::types::RowDisk;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use crate::types::RowDisk;
-use crate::storage::bloom::filter::BloomFilterWrapper;
-use crate::errors::StorageError;
-use crate::storage::sstable::writer::MAGIC_BYTES;
 
 pub struct SSTableReader {
     path: String,
@@ -16,10 +16,13 @@ impl SSTableReader {
         }
     }
 
-    pub fn read_rows_profiled(&self, verify_crc: bool) -> Result<(Vec<RowDisk>, crate::types::QueryProfile), StorageError> {
+    pub fn read_rows_profiled(
+        &self,
+        verify_crc: bool,
+    ) -> Result<(Vec<RowDisk>, crate::types::QueryProfile), StorageError> {
         let mut profile = crate::types::QueryProfile::default();
         let start_io = std::time::Instant::now();
-        
+
         let mut file = File::open(&self.path)?;
         let mut reader = BufReader::new(&mut file);
 
@@ -34,16 +37,20 @@ impl SSTableReader {
         let mut meta_len_bytes = [0u8; 4];
         reader.read_exact(&mut meta_len_bytes)?;
         let meta_len = u32::from_le_bytes(meta_len_bytes);
-        
+
         let mut meta_bytes = vec![0u8; meta_len as usize];
         reader.read_exact(&mut meta_bytes)?;
-        let metadata: crate::types::SSTableMetadata = bincode::deserialize(&meta_bytes).map_err(|e| {
-            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
-        })?;
+        let metadata: crate::types::SSTableMetadata =
+            bincode::deserialize(&meta_bytes).map_err(|e| {
+                StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+            })?;
 
         // Verify Metadata Magic
         if metadata.magic != "AQEM" {
-            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid metadata magic")));
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid metadata magic",
+            )));
         }
 
         // Verify Metadata Checksum
@@ -54,9 +61,12 @@ impl SSTableReader {
         })?;
         let computed = crc32fast::hash(&metadata_pre);
         if computed != metadata.checksum {
-            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Metadata checksum mismatch")));
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Metadata checksum mismatch",
+            )));
         }
-        
+
         let expected_row_count = metadata.row_count;
         profile.io_read_ms += start_io.elapsed().as_secs_f64() * 1000.0;
 
@@ -75,31 +85,34 @@ impl SSTableReader {
                 StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
             })?;
             profile.deserialization_ms += start_row_deser.elapsed().as_secs_f64() * 1000.0;
-            
+
             if verify_crc {
                 let start_crc = std::time::Instant::now();
                 // Verify CRC
                 let mut row_to_check = row.clone();
                 let stored_crc = row.crc;
                 row_to_check.crc = 0;
-                
+
                 let row_bytes = bincode::serialize(&row_to_check).map_err(|e| {
                     StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
                 })?;
-                
+
                 let mut hasher = crc32fast::Hasher::new();
                 hasher.update(&row_bytes);
                 let computed_crc = hasher.finalize();
-                
+
                 if computed_crc != stored_crc {
                     return Err(StorageError::ReadError(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("CRC mismatch for row! Stored: {}, Computed: {}", stored_crc, computed_crc)
+                        format!(
+                            "CRC mismatch for row! Stored: {}, Computed: {}",
+                            stored_crc, computed_crc
+                        ),
                     )));
                 }
                 profile.crc_verify_ms += start_crc.elapsed().as_secs_f64() * 1000.0;
             }
-            
+
             rows.push(row);
         }
 
@@ -119,16 +132,20 @@ impl SSTableReader {
         let mut meta_len_bytes = [0u8; 4];
         reader.read_exact(&mut meta_len_bytes)?;
         let meta_len = u32::from_le_bytes(meta_len_bytes);
-        
+
         let mut meta_bytes = vec![0u8; meta_len as usize];
         reader.read_exact(&mut meta_bytes)?;
-        let metadata: crate::types::SSTableMetadata = bincode::deserialize(&meta_bytes).map_err(|e| {
-            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
-        })?;
+        let metadata: crate::types::SSTableMetadata =
+            bincode::deserialize(&meta_bytes).map_err(|e| {
+                StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+            })?;
 
         // 1. Verify Magic
         if metadata.magic != "AQEM" {
-            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid metadata magic")));
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid metadata magic",
+            )));
         }
 
         // 2. Verify Checksum
@@ -139,9 +156,12 @@ impl SSTableReader {
         })?;
         let computed = crc32fast::hash(&metadata_pre);
         if computed != metadata.checksum {
-            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Metadata checksum mismatch")));
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Metadata checksum mismatch",
+            )));
         }
-        
+
         Ok(metadata)
     }
 

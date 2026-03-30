@@ -1,10 +1,13 @@
-use std::path::Path;
 use crate::errors::StorageError;
+use std::path::Path;
 
 pub struct LcsCompactor;
 
 impl LcsCompactor {
-    pub fn plan_compaction(sst_dir: &Path, l1_max_bytes: u64) -> Result<Vec<Vec<String>>, StorageError> {
+    pub fn plan_compaction(
+        sst_dir: &Path,
+        l1_max_bytes: u64,
+    ) -> Result<Vec<Vec<String>>, StorageError> {
         // Simplified LCS for our prototype:
         // Group all L0 files (those not in segments) if their total size > threshold
         let entries = std::fs::read_dir(sst_dir)?;

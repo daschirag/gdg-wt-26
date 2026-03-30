@@ -18,7 +18,7 @@ pub struct ColumnMetadata {
     pub crc32: u32,
 }
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SSTableMetadata {

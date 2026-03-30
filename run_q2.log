@@ -1,0 +1,287 @@
+warning: unused import: `HashMap`
+  --> src/types.rs:21:24
+   |
+21 | use std::collections::{HashMap, BTreeMap};
+   |                        ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `RleRun`
+ --> src/storage/columnar/writer.rs:4:59
+  |
+4 | use crate::storage::columnar::encoding::rle::{RleEncoder, RleRun};
+  |                                                           ^^^^^^
+
+warning: unused import: `std::collections::HashSet`
+ --> src/query/executor/pipeline.rs:8:5
+  |
+8 | use std::collections::HashSet;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:339:29
+    |
+339 |                         let mut a_fh = if agg_col_idx.is_some() && agg_col_idx != filter_col_idx {
+    |                             ----^^^^
+    |                             |
+    |                             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:32:13
+   |
+32 |         let mut overall_profile = crate::types::QueryProfile::default();
+   |             ----^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:36:13
+   |
+36 |         let mut stage_bloom_ms = 0.0;
+   |             ----^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:37:13
+   |
+37 |         let mut stage_sst_weight_ms = 0.0;
+   |             ----^^^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:41:13
+   |
+41 |         let mut stage_late_mat_ms = 0.0;
+   |             ----^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:52:13
+   |
+52 |         let mut rows_total_possible = 0u64;
+   |             ----^^^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:53:13
+   |
+53 |         let mut rows_after_filter = 0u64;
+   |             ----^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:54:13
+   |
+54 |         let mut rows_after_sample = 0u64;
+   |             ----^^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+  --> src/query/executor/col_pipeline.rs:55:13
+   |
+55 |         let mut rows_after_dedup = 0u64;
+   |             ----^^^^^^^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:187:13
+    |
+187 |         let mut total_rows_possible: u64 = 0;
+    |             ----^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:195:13
+    |
+195 |         let mut current_row_rate = row_rate;
+    |             ----^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:198:13
+    |
+198 |         let mut pilot_done = false;
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/query/executor/col_pipeline.rs:199:13
+    |
+199 |         let mut seen = if skip_dedup {
+    |             ----^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `rows_after_sample`
+  --> src/query/executor/col_pipeline.rs:54:13
+   |
+54 |         let mut rows_after_sample = 0u64;
+   |             ^^^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rows_after_sample`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `user_id_idx`
+  --> src/query/executor/col_pipeline.rs:73:13
+   |
+73 |         let user_id_idx = config.schema.columns.iter().position(|c| c.name == "user_id");
+   |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_user_id_idx`
+
+warning: unused variable: `seen`
+   --> src/query/executor/col_pipeline.rs:199:13
+    |
+199 |         let mut seen = if skip_dedup {
+    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_seen`
+
+warning: unused variable: `filter_f64_val`
+   --> src/query/executor/col_pipeline.rs:208:13
+    |
+208 |         let filter_f64_val = plan.filter.as_ref().and_then(|f| f.value.parse::<f64>().ok());
+    |             ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_filter_f64_val`
+
+warning: variable `pilot_triggered` is assigned to, but never used
+   --> src/query/executor/col_pipeline.rs:209:14
+    |
+209 |         let (mut pilot_triggered, mut pilot_adjusted_row_rate) = (false, row_rate);
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_pilot_triggered` instead
+
+warning: variable `pilot_adjusted_row_rate` is assigned to, but never used
+   --> src/query/executor/col_pipeline.rs:209:35
+    |
+209 |         let (mut pilot_triggered, mut pilot_adjusted_row_rate) = (false, row_rate);
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_pilot_adjusted_row_rate` instead
+
+warning: value assigned to `pilot_triggered` is never read
+   --> src/query/executor/col_pipeline.rs:613:17
+    |
+613 |                 pilot_triggered = true;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `pilot_adjusted_row_rate` is never read
+   --> src/query/executor/col_pipeline.rs:614:17
+    |
+614 |                 pilot_adjusted_row_rate = res.current_row_rate;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `pilot_adj`
+   --> src/query/executor/col_pipeline.rs:729:434
+    |
+729 | ... pilot: bool, pilot_adj: bool, pilot_rate: f64, needed_indices: &[usize], g_map: &HashMap<GroupKey, (f64, u64)...
+    |                  ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pilot_adj`
+
+warning: field `reader_idx` is never read
+  --> src/storage/compaction/merger.rs:14:13
+   |
+12 |         struct MergeEntry {
+   |                ---------- field in this struct
+13 |             row: crate::types::RowDisk,
+14 |             reader_idx: usize,
+   |             ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `lsm` (lib) generated 26 warnings (run `cargo fix --lib -p lsm` to apply 21 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `target/release/lsm query 'SELECT SUM(level) FROM logs WHERE level > 0' --accuracy 0.999`
+AQE Prototype - Phase 3 (Columnar Segments)
+------------------------------------
+Config: Accuracy Target=0.7, k=2, Seed=42
+[DEBUG] Chosen execution path: Columnar { segments: ["data/segments/seg_000", "data/segments/seg_001", "data/segments/seg_002", "data/segments/seg_003", "data/segments/seg_004", "data/segments/seg_005", "data/segments/seg_006", "data/segments/seg_007", "data/segments/seg_008"], columns_needed: ["level"] }
+[DEBUG] Path: Columnar (9 segments)
+[DEBUG] ColumnarPipeline::execute started
+[FIX2-DIAG] total_segments=9 sampled_segments=2
+[FIX2-DIAG] sst_rate=0.30000000000000004 row_rate=0.30000000000000004
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.0000 seg_col_files_opened=1 seg_bytes_read=11988984 seg_row_groups_total=0 seg_row_groups_sampled=0 seg_rows_after_filter=999001 seg_rows_after_sample=999001 seg_filter_ms=0.0000 seg_late_mat_ms=0.0000 seg_aggregation_ms=0.0000 seg_total_ms=34.8309
+[SEG] seg_idx=1 seg_path=N/A seg_row_count=1000000 seg_open_ms=0.0000 seg_col_files_opened=1 seg_bytes_read=11988984 seg_row_groups_total=0 seg_row_groups_sampled=0 seg_rows_after_filter=999001 seg_rows_after_sample=999001 seg_filter_ms=0.0000 seg_late_mat_ms=0.0000 seg_aggregation_ms=0.0000 seg_total_ms=40.2772
+[SCAN] query=Q2
+[SCAN] total_ms=45.6469
+[SCAN] total_segments_available=9
+[SCAN] total_segments_scanned=2
+[SCAN] total_segments_skipped=7
+[SCAN] total_col_files_opened=2
+[SCAN] total_col_files_skipped=8
+[SCAN] total_bytes_read=23977968
+[SCAN] total_bytes_available=760000000
+[SCAN] bytes_read_pct=0.0315
+[SCAN] total_row_groups_evaluated=0
+[SCAN] total_row_groups_scanned=0
+[SCAN] total_row_groups_skipped=0
+[SCAN] total_rows_possible=2000000
+[SCAN] total_rows_after_filter=1998002
+[SCAN] total_rows_after_sample=1998002
+[SCAN] avg_ms_per_segment=22.8234
+[SCAN] avg_ms_per_row_group=0.0000
+[SCAN] avg_ms_per_1k_rows=0.0228
+[SCAN] throughput_mrows_per_sec=43.7709
+[SCAN] throughput_mb_per_sec=525.2928
+[SCAN] rayon_threads=16
+[SCAN] rayon_parallel=true
+[PROFILE] query=Q2
+[PROFILE] total_ms=46.15
+[PROFILE] stage.bloom_ms=0.0000
+[PROFILE] stage.sst_weight_ms=0.0000
+[PROFILE] stage.sst_sample_ms=0.0411
+[PROFILE] stage.col_open_ms=0.0000
+[PROFILE] stage.filter_ms=0.0000
+[PROFILE] stage.late_mat_ms=0.0000
+[PROFILE] stage.dedup_ms=0.0000
+[PROFILE] stage.sample_decision_ms=0.0000
+[PROFILE] stage.aggregation_ms=0.0000
+[PROFILE] io.segments_opened=2
+[PROFILE] io.col_files_opened=2
+[PROFILE] io.bytes_read=23977968
+[PROFILE] io.row_groups_evaluated=0
+[PROFILE] io.row_groups_sampled=0
+[PROFILE] rows.total_possible=2000000
+[PROFILE] rows.after_filter=1998002
+[PROFILE] rows.after_sample=1998002
+[PROFILE] rows.after_dedup=0
+[PROFILE] sampling.sst_rate=0.3000
+[PROFILE] sampling.row_rate=0.3000
+[PROFILE] sampling.effective_rate=0.9990
+[PROFILE] rayon.threads_used=16
+[PROFILE] rayon.parallel=false
+[DIAG] group_by_col_type=None
+[DIAG] filter_col_type=u8
+[DIAG] group_map_final_size=0
+[DIAG] hashmap_collisions=N/A
+[DIAG] metadata_fast_path_used=false
+[DIAG] compacted_only=true
+[DIAG] pilot_phase_triggered=false
+[DIAG] pilot_adjusted_row_rate=0.3000
+[DIAG] col_files_per_query=["level.col"]
+Execution Time: 46.40623ms
+Rows Scanned: 2000000
+--- Performance Profile ---
+  Bloom Filter:     0.00ms
+  SST Sampling:     0.00ms
+  Disk IO (Read):   0.00ms
+  Deserialization:  0.00ms
+  CRC Verify:       0.00ms
+  Filtering:        0.00ms
+  Aggregation:      0.00ms
+---------------------------
+SCALAR: 9489309004|High
+Storage Path: Columnar
+Effective Sampling Rate: 1.0000
+Warnings: ["Columnar Path: Dynamic Sampling enabled"]

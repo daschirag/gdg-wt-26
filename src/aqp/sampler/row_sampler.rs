@@ -1,4 +1,4 @@
-use crate::types::{RowDisk, get_value, ConfidenceFlag};
+use crate::types::{ConfidenceFlag, RowDisk, get_value};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -21,7 +21,7 @@ impl RowSampler {
             seed.hash(&mut hasher);
             offset.hash(&mut hasher);
             let h = hasher.finish();
-            
+
             let include = (h % 1000) < (row_rate * 1000.0) as u64;
 
             if include {
@@ -39,7 +39,7 @@ impl RowSampler {
         let confidences: Vec<ConfidenceFlag> = vec![ConfidenceFlag::High];
         (sampled_rows, confidences)
     }
-    
+
     pub fn is_row_sampled(offset: u64, row_rate: f64, seed: u64) -> bool {
         let mut hasher = DefaultHasher::new();
         seed.hash(&mut hasher);
@@ -48,4 +48,3 @@ impl RowSampler {
         (h % 1000) < (row_rate * 1000.0) as u64
     }
 }
-

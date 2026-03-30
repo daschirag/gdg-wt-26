@@ -1,12 +1,16 @@
-use std::path::Path;
-use crate::storage::sstable::reader::SSTableReader;
-use crate::storage::columnar::writer::ColumnarWriter;
 use crate::errors::StorageError;
+use crate::storage::columnar::writer::ColumnarWriter;
+use crate::storage::sstable::reader::SSTableReader;
+use std::path::Path;
 
 pub struct SegmentMerger;
 
 impl SegmentMerger {
-    pub fn merge_sstables_to_segment(sst_paths: &[String], output_segment_path: &Path, config: &crate::config::Config) -> Result<(), StorageError> {
+    pub fn merge_sstables_to_segment(
+        sst_paths: &[String],
+        output_base_path: &Path,
+        config: &crate::config::Config,
+    ) -> Result<Vec<String>, StorageError> {
         use std::collections::BinaryHeap;
 
         struct MergeEntry {
@@ -28,13 +32,17 @@ impl SegmentMerger {
         }
         impl Ord for MergeEntry {
             fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-                let a_uid = self.row.values.first().and_then(|v| match v { crate::types::Value::Int(i) => Some(i), _ => None });
-                let b_uid = other.row.values.first().and_then(|v| match v { crate::types::Value::Int(i) => Some(i), _ => None });
-                
-                // BinaryHeap is a Max-Heap, so we want the "smallest" (earliest uid) to be at the top.
-                // Reverse the primary ordering, but keep seq descending (higher seq first).
+                let a_uid = self.row.values.first().and_then(|v| match v {
+                    crate::types::Value::Int(i) => Some(i),
+                    _ => None,
+                });
+                let b_uid = other.row.values.first().and_then(|v| match v {
+                    crate::types::Value::Int(i) => Some(i),
+                    _ => None,
+                });
+
                 match b_uid.cmp(&a_uid) {
-                    std::cmp::Ordering::Equal => self.row.seq.cmp(&other.row.seq), // Higher seq first
+                    std::cmp::Ordering::Equal => self.row.seq.cmp(&other.row.seq),
                     other => other,
                 }
             }
@@ -46,17 +54,23 @@ impl SegmentMerger {
             let (rows, _) = reader.read_rows_profiled(false)?;
             let mut iter = rows.into_iter();
             if let Some(row) = iter.next() {
-                heap.push(MergeEntry { row, reader_idx: idx, remaining_rows: iter });
+                heap.push(MergeEntry {
+                    row,
+                    reader_idx: idx,
+                    remaining_rows: iter,
+                });
             }
         }
 
         let mut last_uid = None;
-        let deduped_iter = std::iter::from_fn(move || {
+        let mut deduped_iter = std::iter::from_fn(move || {
             while let Some(mut top) = heap.pop() {
                 let current_row = top.row.clone();
-                let current_uid = current_row.values.first().and_then(|v| match v { crate::types::Value::Int(i) => Some(*i), _ => None });
-                
-                // Push next row from the same reader
+                let current_uid = current_row.values.first().and_then(|v| match v {
+                    crate::types::Value::Int(i) => Some(*i),
+                    _ => None,
+                });
+
                 if let Some(next_row) = top.remaining_rows.next() {
                     top.row = next_row;
                     heap.push(top);
@@ -70,16 +84,42 @@ impl SegmentMerger {
             None
         });
 
-        // 4. Write as Segment using the streaming iterator
-        ColumnarWriter::write_segment_from_iter(output_segment_path, deduped_iter, config, 0.01)?;
- // 1% FPR for compacted bloom
+        // Split writing into multiple segments if row count exceeds max_segment_rows
+        let mut created_segments = Vec::new();
+        let mut segment_idx = 0;
+        let mut done = false;
 
-        // 4. Cleanup source SSTables (atomic rename then delete)
-        // For now, we just delete them.
+        while !done {
+            let mut chunk = Vec::with_capacity(config.max_segment_rows as usize);
+            for _ in 0..config.max_segment_rows {
+                if let Some(row) = deduped_iter.next() {
+                    chunk.push(row);
+                } else {
+                    done = true;
+                    break;
+                }
+            }
+
+            if !chunk.is_empty() {
+                let seg_path = if segment_idx == 0 {
+                    output_base_path.to_path_buf()
+                } else {
+                    let parent = output_base_path.parent().unwrap();
+                    let file_name = output_base_path.file_name().unwrap().to_str().unwrap();
+                    parent.join(format!("{}_{:03}", file_name, segment_idx))
+                };
+
+                ColumnarWriter::write_segment(&seg_path, &chunk, config, 0.01)?;
+                created_segments.push(seg_path.to_str().unwrap().to_string());
+                segment_idx += 1;
+            }
+        }
+
+        // Cleanup source SSTables
         for path in sst_paths {
             let _ = std::fs::remove_file(path);
         }
 
-        Ok(())
+        Ok(created_segments)
     }
 }

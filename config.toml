@@ -1,4 +1,4 @@
-accuracy_target = 0.7
+accuracy_target = 0.70
 k = 2.0
 low_confidence_threshold = 100
 seed = 42
@@ -15,3 +15,4 @@ min_compaction_files = 4
 row_group_size = 1024
 lcs_l1_max_bytes = 10485760
 lcs_l2_max_bytes = 104857600
+max_segment_rows = 1000000

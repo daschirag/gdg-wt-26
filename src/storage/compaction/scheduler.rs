@@ -1,7 +1,7 @@
+use crate::storage::compaction::engine::CompactionEngine;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use std::sync::Arc;
-use crate::storage::compaction::engine::CompactionEngine;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -17,7 +17,7 @@ impl CompactionScheduler {
         thread::spawn(move || {
             loop {
                 thread::sleep(Duration::from_secs(config.compaction_interval_secs));
-                
+
                 if !IS_COMPACTING.swap(true, Ordering::SeqCst) {
                     let _ = CompactionEngine::run_compaction(&storage);
                     IS_COMPACTING.store(false, Ordering::SeqCst);
@@ -30,7 +30,7 @@ impl CompactionScheduler {
         if IS_COMPACTING.swap(true, Ordering::SeqCst) {
             return Ok(0); // Already compacting
         }
-        
+
         let res = CompactionEngine::run_compaction(storage);
         IS_COMPACTING.store(false, Ordering::SeqCst);
         res

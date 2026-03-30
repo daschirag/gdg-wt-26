@@ -1,8 +1,8 @@
-use std::fs::File;
-use std::io::{Read, Write, Seek, SeekFrom, BufWriter};
-use crate::types::{RowDisk, Value};
 use crate::errors::StorageError;
+use crate::types::{RowDisk, Value};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 
 pub const COLUMNAR_MAGIC: &[u8; 4] = b"COL1";
 
@@ -34,12 +34,16 @@ impl ColumnarWriter {
         })
     }
 
-    pub fn write_sstable(&mut self, rows: &[RowDisk], config: &crate::config::Config) -> Result<crate::types::InsertionProfile, StorageError> {
+    pub fn write_sstable(
+        &mut self,
+        rows: &[RowDisk],
+        config: &crate::config::Config,
+    ) -> Result<crate::types::InsertionProfile, StorageError> {
         let mut profile = crate::types::InsertionProfile::default();
         if rows.is_empty() {
             return Ok(profile);
         }
-        
+
         // 1. Magic
         self.writer.write_all(COLUMNAR_MAGIC)?;
 
@@ -63,7 +67,7 @@ impl ColumnarWriter {
 
             let start_col_offset = current_offset;
             let mut col_sum = 0.0;
-            
+
             match data_type {
                 "i64" => {
                     for row in rows {
@@ -100,7 +104,7 @@ impl ColumnarWriter {
                         lengths.push(s.len() as u32);
                         data_buf.extend_from_slice(s.as_bytes());
                     }
-                    
+
                     for len in lengths {
                         self.writer.write_all(&len.to_le_bytes())?;
                         current_offset += 4;
@@ -134,11 +138,11 @@ impl ColumnarWriter {
         let metadata_bytes = serde_json::to_vec(&metadata).map_err(|e| {
             StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
         })?;
-        
+
         let meta_offset = current_offset;
         self.writer.write_all(&metadata_bytes)?;
         profile.metadata_serialize_ms = start_meta.elapsed().as_secs_f64() * 1000.0;
-        
+
         // Finalize by writing the metadata offset back at the start
         let start_io = std::time::Instant::now();
         self.writer.flush()?;
@@ -158,7 +162,9 @@ pub struct ColumnarReader {
 
 impl ColumnarReader {
     pub fn new(path: &str) -> Self {
-        Self { path: path.to_string() }
+        Self {
+            path: path.to_string(),
+        }
     }
 
     pub fn get_metadata(path: &str) -> Result<ColumnarMetadata, StorageError> {
@@ -166,7 +172,9 @@ impl ColumnarReader {
         let mut magic = [0u8; 4];
         file.read_exact(&mut magic)?;
         if &magic != COLUMNAR_MAGIC {
-            return Err(StorageError::InvalidFormat("Invalid columnar magic".to_string()));
+            return Err(StorageError::InvalidFormat(
+                "Invalid columnar magic".to_string(),
+            ));
         }
 
         let mut meta_offset_bytes = [0u8; 8];
@@ -186,43 +194,63 @@ impl ColumnarReader {
 
     pub fn read_column_i64(&self, col_name: &str) -> Result<Vec<i64>, StorageError> {
         let meta = Self::get_metadata(&self.path)?;
-        let col = meta.columns.iter().find(|c| c.name == col_name)
-            .ok_or_else(|| StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::NotFound, "Column not found")))?;
-        
+        let col = meta
+            .columns
+            .iter()
+            .find(|c| c.name == col_name)
+            .ok_or_else(|| {
+                StorageError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Column not found",
+                ))
+            })?;
+
         if col.data_type != "i64" {
-            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Column is not i64")));
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Column is not i64",
+            )));
         }
 
         let mut file = File::open(&self.path)?;
         file.seek(SeekFrom::Start(col.offset))?;
-        
+
         let mut data = vec![0i64; meta.row_count as usize];
-        let bytes = unsafe {
-            std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len() * 8)
-        };
+        let bytes =
+            unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len() * 8) };
         file.read_exact(bytes)?;
-        
+
         Ok(data)
     }
 
     pub fn read_column_f64(&self, col_name: &str) -> Result<Vec<f64>, StorageError> {
         let meta = Self::get_metadata(&self.path)?;
-        let col = meta.columns.iter().find(|c| c.name == col_name)
-            .ok_or_else(|| StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::NotFound, "Column not found")))?;
-        
+        let col = meta
+            .columns
+            .iter()
+            .find(|c| c.name == col_name)
+            .ok_or_else(|| {
+                StorageError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Column not found",
+                ))
+            })?;
+
         if col.data_type != "f64" {
-            return Err(StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidData, "Column is not f64")));
+            return Err(StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Column is not f64",
+            )));
         }
 
         let mut file = File::open(&self.path)?;
         file.seek(SeekFrom::Start(col.offset))?;
-        
+
         let mut data = vec![0.0f64; meta.row_count as usize];
-        let bytes = unsafe {
-            std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len() * 8)
-        };
+        let bytes =
+            unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len() * 8) };
         file.read_exact(bytes)?;
-        
+
         Ok(data)
     }
 }

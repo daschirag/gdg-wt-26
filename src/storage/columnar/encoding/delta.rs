@@ -11,14 +11,17 @@ pub struct DeltaEncoder;
 impl DeltaEncoder {
     pub fn encode_i64(values: &[i64]) -> DeltaEncoded<i64> {
         if values.is_empty() {
-            return DeltaEncoded { base: 0, deltas: Vec::new() };
+            return DeltaEncoded {
+                base: 0,
+                deltas: Vec::new(),
+            };
         }
 
         let base = values[0];
         let mut deltas = Vec::with_capacity(values.len());
         // Note: we store deltas as absolute or relative from previous
         // Standard Delta-of-Delta or simple Delta. Simple Delta for now.
-        
+
         let mut prev = base;
         for &val in values.iter().skip(1) {
             deltas.push(val - prev);
@@ -29,7 +32,8 @@ impl DeltaEncoder {
     }
 
     pub fn decode_i64(encoded: &DeltaEncoded<i64>) -> crate::utils::aligned_vec::AlignedVec<i64> {
-        let mut values = crate::utils::aligned_vec::AlignedVec::with_capacity(encoded.deltas.len() + 1);
+        let mut values =
+            crate::utils::aligned_vec::AlignedVec::with_capacity(encoded.deltas.len() + 1);
         let mut current = encoded.base;
         values.push(current);
 
@@ -41,7 +45,7 @@ impl DeltaEncoder {
         values
     }
 
-    // SIMD-friendly vectorized addition if needed, 
+    // SIMD-friendly vectorized addition if needed,
     // but the loop above is usually auto-vectorized by LLVM.
 }
 
