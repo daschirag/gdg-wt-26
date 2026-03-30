@@ -108,6 +108,7 @@ impl ColumnarWriter {
             min_ts: if min_ts == i64::MAX { 0 } else { min_ts },
             max_ts: if max_ts == i64::MIN { 0 } else { max_ts },
             schema_version: rows[0].version,
+            is_compacted: false,
             sums,
             column_encodings,
         };

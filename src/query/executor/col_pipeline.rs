@@ -83,7 +83,7 @@ impl ColumnarPipeline {
         // 3. Process each sampled segment
         for (seg_idx, seg_path) in sampled_segments.iter().enumerate() {
             let start_seg = Instant::now();
-            let reader = ColumnarReader::new(seg_path.into()).map_err(|e| QueryError::StorageError(e))?;
+            let reader = ColumnarReader::new(std::path::PathBuf::from(seg_path)).map_err(|e| QueryError::StorageError(e))?;
             
             // Pre-parse filters for performance
             let filter_i64 = plan.filter.as_ref().and_then(|f| f.value.parse::<i64>().ok());
