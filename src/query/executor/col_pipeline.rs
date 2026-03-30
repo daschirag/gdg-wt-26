@@ -117,10 +117,15 @@ impl ColumnarPipeline {
                 Aggregation::Count => None,
                 Aggregation::Sum(c) | Aggregation::Avg(c) => config.schema.columns.iter().position(|col| col.name == *c),
             };
+            let user_id_idx = config.schema.columns.iter().position(|c| c.name == "user_id");
 
             let num_rows = reader.metadata.row_count as usize;
             let group_size = config.row_group_size as usize;
             let num_groups = (num_rows + group_size - 1) / group_size;
+
+            // Fix D: Compacted Deduplication Bypass
+            let skip_dedup = reader.metadata.is_compacted;
+            let mut seen = std::collections::HashSet::new();
 
             for group_idx in 0..num_groups {
                 if ColumnSampler::should_sample_row_group(seg_idx, group_idx, row_rate, config.seed) {
@@ -152,6 +157,19 @@ impl ColumnarPipeline {
                             }
                         }
                         if !passes_filter { continue; }
+
+                        // Fix D: Compacted Deduplication Bypass
+                        if !skip_dedup {
+                            if let Some(u_idx) = user_id_idx {
+                                if let Some(user_ids) = &all_i64[u_idx] {
+                                    let uid = user_ids[i] as u64;
+                                    if seen.contains(&uid) { continue; }
+                                    seen.insert(uid);
+                                }
+                            }
+                        }
+
+                        total_rows_read += 1;
 
                         // Get group key
                         let group_key = if let Some(g_idx) = group_col_idx {
