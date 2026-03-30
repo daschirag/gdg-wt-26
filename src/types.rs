@@ -34,6 +34,19 @@ pub struct ColumnIndexMetadata {
     pub supports: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SegmentArtifactMetadata {
+    pub kind: String,
+    pub file: String,
+    #[serde(default)]
+    pub columns: Vec<String>,
+    pub row_count: u64,
+    #[serde(default)]
+    pub sample_rate: f64,
+    #[serde(default)]
+    pub supports: Vec<String>,
+}
+
 impl ColumnMetadata {
     pub fn index(&self, kind: &str) -> Option<&ColumnIndexMetadata> {
         self.indexes.iter().find(|idx| idx.kind == kind)
@@ -69,6 +82,8 @@ pub struct SSTableMetadata {
     pub max_ts: i64,
     pub schema_version: u32,
     pub columns: BTreeMap<String, ColumnMetadata>,
+    #[serde(default)]
+    pub artifacts: Vec<SegmentArtifactMetadata>,
     pub checksum: u32,
 }
 
@@ -101,6 +116,25 @@ pub enum AggregateValue {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AqpSampleData {
+    pub sample_rate: f64,
+    pub row_count: u64,
+    #[serde(default)]
+    pub rows: Vec<RowDisk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AqpDiagnostics {
+    pub mode: String,
+    pub source: String,
+    pub sample_rate: f64,
+    pub sample_rows: u64,
+    pub estimated_error: f64,
+    pub ci_lower: Option<f64>,
+    pub ci_upper: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct QueryProfile {
     pub bloom_filter_ms: f64,
     pub sst_sampling_ms: f64,
@@ -123,6 +157,10 @@ pub struct QueryResult {
     pub sampling_rate: f64,
     pub estimated_variance: f64,
     pub profile: QueryProfile,
+    #[serde(default)]
+    pub aqp: Option<AqpDiagnostics>,
+    #[serde(default)]
+    pub next_offset: Option<u64>,
 }
 
 pub fn get_value(row: &RowDisk, col: &str, config: &crate::config::Config) -> Option<Value> {
