@@ -68,6 +68,8 @@ pub struct QueryProfile {
     pub crc_verify_ms: f64,
     pub filtering_ms: f64,
     pub aggregation_ms: f64,
+    pub rayon_parallel: bool,
+    pub rayon_threads_used: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
