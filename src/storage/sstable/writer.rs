@@ -58,7 +58,9 @@ impl SSTableWriter {
             min_ts: if min_ts == i64::MAX { 0 } else { min_ts },
             max_ts: if max_ts == i64::MIN { 0 } else { max_ts },
             schema_version: rows.first().map(|r| r.version).unwrap_or(1),
+            is_compacted: false,
             sums,
+            column_encodings: std::collections::HashMap::new(),
         };
 
         let metadata_bytes = bincode::serialize(&metadata).map_err(|e| {
