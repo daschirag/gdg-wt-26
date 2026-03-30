@@ -24,6 +24,12 @@ pub struct Config {
     pub min_group_rows: u64,
     pub low_confidence_threshold: u64,
     pub verify_crc: bool,
+    pub compaction_strategy: String,
+    pub compaction_interval_secs: u64,
+    pub min_compaction_files: u64,
+    pub row_group_size: u64,
+    pub lcs_l1_max_bytes: u64,
+    pub lcs_l2_max_bytes: u64,
     #[serde(default)]
     pub schema: Schema,
 }
@@ -40,6 +46,12 @@ impl Default for Config {
             min_group_rows: 50,
             low_confidence_threshold: 100,
             verify_crc: true,
+            compaction_strategy: "stcs".to_string(),
+            compaction_interval_secs: 30,
+            min_compaction_files: 4,
+            row_group_size: 1024,
+            lcs_l1_max_bytes: 10 * 1024 * 1024,
+            lcs_l2_max_bytes: 100 * 1024 * 1024,
             schema: Schema::default(),
         }
     }

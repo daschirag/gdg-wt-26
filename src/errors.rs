@@ -22,6 +22,8 @@ pub enum QueryError {
     UnknownColumn(String),
     #[error("Unsupported operation: {0}")]
     UnsupportedOperation(String),
+    #[error("Storage error: {0}")]
+    StorageError(#[from] StorageError),
 }
 
 #[derive(Error, Debug)]

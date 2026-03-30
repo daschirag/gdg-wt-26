@@ -14,9 +14,10 @@ pub struct SSTableMetadata {
     pub max_ts: i64,
     pub schema_version: u32,
     pub sums: std::collections::HashMap<String, f64>,
+    pub column_encodings: std::collections::HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub enum Value {
     Int(i64),
     Float(f64),
