@@ -1,1 +1,4 @@
-target/\ndata/\n*.aqe\n*.csv
+target/
+data/
+*.aqe
+*.csv

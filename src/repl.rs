@@ -4,7 +4,6 @@ use crate::config::Config;
 use crate::query::parser::Parser;
 use crate::query::executor::pipeline::Pipeline;
 use crate::datagen::generate_dataset;
-use crate::storage::sstable::writer::SSTableWriter;
 use std::time::Instant;
 
 pub fn start_repl(config: Config) -> Result<()> {
@@ -76,22 +75,21 @@ fn print_help() {
 fn handle_gen(num_rows: usize, config: &Config) {
     println!("Generating {} rows...", num_rows);
     let start = Instant::now();
-    let rows = generate_dataset(num_rows, config, None);
+    let (rows, _) = generate_dataset(num_rows, config, None);
     
     let path_prefix = "data/sstable_";
     std::fs::create_dir_all("data").unwrap_or_default();
     
-    // For simplicity in REPL, we flush to 10 SSTables like in main
     for i in 0..10 {
         let chunk_size = num_rows / 10;
         let start_idx = i * chunk_size;
         let end_idx = if i == 9 { num_rows } else { (i + 1) * chunk_size };
         let chunk = &rows[start_idx..end_idx];
         let path = format!("{}{}.aqe", path_prefix, i);
-        let mut writer = SSTableWriter::new(&path).expect("Failed to create SSTableWriter");
-        writer.write_sstable(chunk, config.bloom_fpr, config.verify_crc).expect("Failed to write SSTable");
+        let mut writer = crate::storage::sstable::columnar::ColumnarWriter::new(&path).expect("Failed to create ColumnarWriter");
+        writer.write_sstable(chunk, config).expect("Failed to write Columnar SSTable");
     }
-    println!("Done! Generated and flushed {} rows in {:?}", num_rows, start.elapsed());
+    println!("Done! Generated and flushed {} rows (columnar) in {:?}", num_rows, start.elapsed());
 }
 
 fn handle_query(sql: &str, config: &Config) {

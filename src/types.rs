@@ -57,3 +57,17 @@ pub fn get_value(row: &RowDisk, col: &str, config: &crate::config::Config) -> Op
     let idx = config.schema.columns.iter().position(|c| c.name == col)?;
     row.values.get(idx).cloned()
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InsertionProfile {
+    pub transposition_ms: f64,
+    pub aggregation_ms: f64,
+    pub io_write_ms: f64,
+    pub metadata_serialize_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GenerationProfile {
+    pub random_gen_ms: f64,
+    pub allocation_ms: f64,
+}

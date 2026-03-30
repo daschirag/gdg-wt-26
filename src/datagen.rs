@@ -4,10 +4,14 @@ use crate::types::{RowDisk, Value};
 use std::fs::File;
 use std::io::Write;
 
-pub fn generate_dataset(n: usize, config: &crate::config::Config, csv_path: Option<&str>) -> Vec<RowDisk> {
+pub fn generate_dataset(n: usize, config: &crate::config::Config, csv_path: Option<&str>) -> (Vec<RowDisk>, crate::types::GenerationProfile) {
+    let mut profile = crate::types::GenerationProfile::default();
+    let start_total = std::time::Instant::now();
+    
     let mut rng = ChaCha8Rng::seed_from_u64(config.seed);
     let mut data = Vec::with_capacity(n);
 
+    let start_gen = std::time::Instant::now();
     let start_ts = 1577836800000i64;
     let end_ts = 1735603200000i64;
 
@@ -30,9 +34,8 @@ pub fn generate_dataset(n: usize, config: &crate::config::Config, csv_path: Opti
                 "country" => Value::Int(rng.gen_range(0..5)),
                 "timestamp" => Value::Int(rng.gen_range(start_ts..=end_ts)),
                 _ => {
-                    // Default values for unknown columns based on type
                     match col.r#type.as_str() {
-                        "u64" | "i64" | "u32" | "u8" => Value::Int(rng.gen_range(0..1000)),
+                        "u64" | "i64" | "u32" | "u8" | "i8" => Value::Int(rng.gen_range(0..1000)),
                         "f64" | "f32" => Value::Float(rng.gen_range(0.0..1000.0)),
                         _ => Value::String("dynamic_val".to_string()),
                     }
@@ -57,5 +60,8 @@ pub fn generate_dataset(n: usize, config: &crate::config::Config, csv_path: Opti
         });
     }
 
-    data
+    profile.random_gen_ms = start_gen.elapsed().as_secs_f64() * 1000.0;
+    profile.allocation_ms = start_total.elapsed().as_secs_f64() * 1000.0 - profile.random_gen_ms;
+
+    (data, profile)
 }

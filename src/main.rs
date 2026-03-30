@@ -39,22 +39,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 1. Data Generation
         let start_gen = Instant::now();
-        let rows = generate_dataset(num_rows, &config, csv_dump_path);
+        let (rows, gen_profile) = generate_dataset(num_rows, &config, csv_dump_path);
         let duration_gen = start_gen.elapsed();
 
         // 2. Storage - Flush to 10 SSTables
+        let mut overall_insertion = crate::types::InsertionProfile::default();
         let start_flush = Instant::now();
         std::fs::create_dir_all("data")?;
         for i in 0..10 {
             let chunk_size = num_rows / 10;
             let chunk = &rows[i * chunk_size..(i + 1) * chunk_size];
             let path = format!("data/sstable_{}.aqe", i);
-            let mut writer = storage::sstable::writer::SSTableWriter::new(&path)?;
-            writer.write_sstable(chunk, config.bloom_fpr, config.verify_crc)?;
+            let mut writer = storage::sstable::columnar::ColumnarWriter::new(&path)?;
+            let profile = writer.write_sstable(chunk, &config)?;
+            overall_insertion.transposition_ms += profile.transposition_ms;
+            overall_insertion.io_write_ms += profile.io_write_ms;
+            overall_insertion.metadata_serialize_ms += profile.metadata_serialize_ms;
         }
         let duration_flush = start_flush.elapsed();
-        println!("GEN_TIME: {:?}", duration_gen);
-        println!("FLUSH_TIME: {:?}", duration_flush);
+
+        println!("--- Generation Profile ---");
+        println!("  Random Gen:       {:>8.2}ms", gen_profile.random_gen_ms);
+        println!("  Allocation/Misc:  {:>8.2}ms", gen_profile.allocation_ms);
+        println!("  Total Gen:        {:>8.2}ms", duration_gen.as_secs_f64() * 1000.0);
+        println!();
+        println!("--- Flush Profile (Columnar) ---");
+        println!("  Transposition:    {:>8.2}ms", overall_insertion.transposition_ms);
+        println!("  Metadata Serial:  {:>8.2}ms", overall_insertion.metadata_serialize_ms);
+        println!("  Disk I/O (Write): {:>8.2}ms", overall_insertion.io_write_ms);
+        println!("  Total Flush:      {:>8.2}ms", duration_flush.as_secs_f64() * 1000.0);
+        println!("----------------------------");
 
         return Ok(());
     } else if command == "query" {
