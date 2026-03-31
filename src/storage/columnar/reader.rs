@@ -1,9 +1,10 @@
+use crate::aqp::tdigest::{TDigest, read_tdigest};
 use crate::errors::StorageError;
 use crate::storage::bitmap::{read_bitmap_index, Bitmap};
 use crate::storage::columnar::encoding::delta::{DeltaEncoded, DeltaEncoder};
 use crate::storage::columnar::encoding::rle::{RleEncoder, RleRun, RleRunI64};
 use crate::storage::hll::{read_hll, HllSketch};
-use crate::types::{ColumnMetadata, GroupStatsData, RangeBlocksData, SSTableMetadata};
+use crate::types::{AqpSampleData, ColumnMetadata, GroupStatsData, RangeBlocksData, SSTableMetadata};
 use crate::utils::aligned_vec::AlignedVec;
 use memmap2::Mmap;
 use serde::{Deserialize, Serialize};
@@ -275,6 +276,40 @@ impl ColumnarReader {
             ))
         })?;
         read_hll(&self.path.join(&meta.file))
+    }
+
+    pub fn read_tdigest(&self, name: &str) -> Result<TDigest, StorageError> {
+        let col_meta = self.metadata.columns.get(name).ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Column not found",
+            ))
+        })?;
+        let meta = col_meta.index("tdigest").ok_or_else(|| {
+            StorageError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "t-digest index not available",
+            ))
+        })?;
+        read_tdigest(&self.path.join(&meta.file))
+    }
+
+    pub fn read_aqp_sample(&self) -> Result<AqpSampleData, StorageError> {
+        let meta = self
+            .metadata
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.kind == "sample")
+            .ok_or_else(|| {
+                StorageError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "AQP sample artifact not available",
+                ))
+            })?;
+        let bytes = fs::read(self.path.join(&meta.file))?;
+        bincode::deserialize(&bytes).map_err(|e| {
+            StorageError::ReadError(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })
     }
 
     pub fn read_delta_encoded_i64(&self, name: &str) -> Result<DeltaEncoded<i64>, StorageError> {
