@@ -1,11 +1,14 @@
+use crate::aqp::accuracy::AccuracyCalculator;
+use crate::aqp::tdigest::{TDigest, write_tdigest};
 use crate::errors::StorageError;
+use crate::aqp::sampler::row_sampler::RowSampler;
 use crate::storage::bitmap::{build_equality_bitmaps, write_bitmap_index};
 use crate::storage::columnar::encoding::delta::DeltaEncoder;
 use crate::storage::columnar::encoding::rle::{RleEncoder, RleRunI64};
 use crate::storage::hll::{write_hll, HllSketch};
 use crate::types::{
-    ColumnIndexMetadata, GroupStatsData, RangeBlock, RangeBlocksData, RowDisk,
-    SSTableMetadata, Value,
+    AqpSampleData, ColumnIndexMetadata, GroupStatsData, RangeBlock, RangeBlocksData, RowDisk,
+    SSTableMetadata, SegmentArtifactMetadata, Value,
 };
 use std::collections::BTreeMap;
 use std::fs;
@@ -27,6 +30,14 @@ fn write_group_stats(path: &Path, data: &GroupStatsData) -> Result<(), StorageEr
 }
 
 fn write_range_blocks(path: &Path, data: &RangeBlocksData) -> Result<(), StorageError> {
+    let bytes = bincode::serialize(data).map_err(|e| {
+        StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
+    })?;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+fn write_sample(path: &Path, data: &AqpSampleData) -> Result<(), StorageError> {
     let bytes = bincode::serialize(data).map_err(|e| {
         StorageError::WriteError(std::io::Error::new(std::io::ErrorKind::Other, e))
     })?;
@@ -66,6 +77,9 @@ impl ColumnarWriter {
         if rows.is_empty() {
             return Ok(());
         }
+        let aqp_settings = AccuracyCalculator::mode_settings(AccuracyCalculator::parse_mode(
+            &config.aqp_mode,
+        ));
 
         // 1. Prepare directory
         if segment_path.exists() {
@@ -150,6 +164,20 @@ impl ColumnarWriter {
                             Value::Int(iv) => *iv,
                             Value::Float(fv) => *fv as i64,
                             _ => 0,
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            };
+            let numeric_values: Option<Vec<f64>> = if is_numeric_col {
+                Some(
+                    col_data
+                        .iter()
+                        .map(|v| match v {
+                            Value::Int(iv) => *iv as f64,
+                            Value::Float(fv) => *fv,
+                            _ => 0.0,
                         })
                         .collect(),
                 )
@@ -241,6 +269,20 @@ impl ColumnarWriter {
                     row_count: i64_data.len() as u64,
                     supports: vec!["distinct_estimate".to_string(), "planner".to_string()],
                 });
+                if let Some(values) = numeric_values.as_ref() {
+                    let tdigest_file = format!("{}.tdigest", col_schema.name);
+                    write_tdigest(
+                        &segment_path.join(&tdigest_file),
+                        &TDigest::from_values(values, aqp_settings.tdigest_compression),
+                    )?;
+                    indexes.push(ColumnIndexMetadata {
+                        kind: "tdigest".to_string(),
+                        file: tdigest_file,
+                        values: Vec::new(),
+                        row_count: values.len() as u64,
+                        supports: vec!["approx_percentile".to_string(), "planner".to_string()],
+                    });
+                }
                 if distinct_count > 0 && distinct_count <= BITMAP_MAX_DISTINCT {
                     let mut values: Vec<i64> = distinct_values.iter().copied().collect();
                     values.sort_unstable();
@@ -380,8 +422,42 @@ impl ColumnarWriter {
             max_ts: if max_ts == i64::MIN { 0 } else { max_ts },
             schema_version: rows[0].version,
             columns: column_metadata,
+            artifacts: Vec::new(),
             checksum: 0,
         };
+
+        let sample_rows: Vec<RowDisk> = rows
+            .iter()
+            .enumerate()
+            .filter(|(idx, row)| {
+                let offset = if row.seq == 0 { *idx as u64 } else { row.seq };
+                RowSampler::is_row_sampled(offset, aqp_settings.sample_rate, config.seed)
+            })
+            .map(|(_, row)| row.clone())
+            .collect();
+        let sample_file = "aqp.sample".to_string();
+        write_sample(
+            &segment_path.join(&sample_file),
+            &AqpSampleData {
+                sample_rate: aqp_settings.sample_rate,
+                row_count: num_rows as u64,
+                rows: sample_rows.clone(),
+            },
+        )?;
+        metadata.artifacts.push(SegmentArtifactMetadata {
+            kind: "sample".to_string(),
+            file: sample_file,
+            columns: config.schema.columns.iter().map(|col| col.name.clone()).collect(),
+            row_count: sample_rows.len() as u64,
+            sample_rate: aqp_settings.sample_rate,
+            supports: vec![
+                "count".to_string(),
+                "sum".to_string(),
+                "avg".to_string(),
+                "group_by".to_string(),
+                "approx_percentile_filter".to_string(),
+            ],
+        });
 
         // Compute metadata checksum
         let meta_toml_pre = toml::to_string(&metadata).map_err(|e| {
