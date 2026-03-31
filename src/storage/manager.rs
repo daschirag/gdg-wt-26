@@ -108,15 +108,26 @@ impl StorageManager {
     pub fn scan_memtable(&self, plan: &QueryPlan) -> Vec<RowDisk> {
         let mem = self.memtable.read().unwrap();
         let mut results = Vec::new();
+        let offset = plan.offset.unwrap_or(0);
+        let limit = plan.limit;
+        let mut skipped = 0u64;
 
         for row in mem.data.values() {
-            // Apply filter
             let include = plan.filter.as_ref().map_or(true, |expr| {
                 expr.eval_value(&|column| crate::types::get_value(row, column, &self.config))
             });
-
-            if include {
-                results.push(row.clone());
+            if !include {
+                continue;
+            }
+            if skipped < offset {
+                skipped += 1;
+                continue;
+            }
+            results.push(row.clone());
+            if let Some(lim) = limit {
+                if results.len() as u64 >= lim {
+                    break;
+                }
             }
         }
         results
