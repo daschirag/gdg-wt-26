@@ -1,0 +1,1342 @@
+---
+import MainLayout from "../Layouts/MainLayout.astro";
+---
+
+<MainLayout>
+  <!-- TopAppBar -->
+  <header class="fixed top-0 left-0 right-0 z-50 max-w-7xl mx-auto mt-4 px-4">
+    <div class="neu-surface rounded-full bg-surface flex items-center justify-between px-6 py-3 gap-4">
+      <!-- Logo -->
+      <div class="flex items-center gap-2.5 shrink-0">
+        <span class="material-symbols-outlined text-primary text-xl">database</span>
+        <span class="text-lg font-black text-on-surface font-['Space_Grotesk'] tracking-tight">AQE</span>
+      </div>
+      <!-- Tab nav -->
+      <nav class="hidden md:flex items-center gap-1 neu-pressed rounded-full px-2 py-1.5">
+        <button data-tab="overview"  class="tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all bg-black text-white shadow-md">Overview</button>
+        <button data-tab="benchmark" class="tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all text-slate-400 hover:text-on-surface">Benchmark</button>
+        <button data-tab="live"      class="tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all text-slate-400 hover:text-on-surface">Live</button>
+        <button data-tab="advanced"  class="tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all text-slate-400 hover:text-on-surface">Advanced</button>
+        <button data-tab="docs"      class="tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all text-slate-400 hover:text-on-surface">Docs</button>
+      </nav>
+      <!-- Status badge -->
+      <div class="shrink-0">
+        <span id="nav-live-badge" class="px-4 py-1 rounded-full neu-pressed text-[#2c50cd] text-xs font-bold tracking-widest">LIVE</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 pt-32 pb-40">
+
+    <!-- ================================================================ -->
+    <!-- TAB: OVERVIEW                                                     -->
+    <!-- ================================================================ -->
+    <section id="tab-overview">
+    <!-- Hero Summary Card -->
+    <div class="mb-16">
+      <div class="neu-surface rounded-xl p-10 md:p-16 flex flex-col md:flex-row items-center gap-12 bg-surface">
+        <div class="flex-1 space-y-6">
+          <span class="inline-block px-4 py-1 rounded-full bg-surface-container-high text-primary font-bold text-xs uppercase tracking-[0.2em]">Engine Status: Operational</span>
+          <h2 class="text-4xl md:text-6xl font-headline font-bold text-on-surface leading-tight tracking-tighter">
+            AQE — Storage-Aware <span class="text-primary text-glow">Approximate</span> Query Engine
+          </h2>
+          <p class="text-on-surface-variant text-lg max-w-xl leading-relaxed">
+            A high-performance Rust-based core designed for low-latency analytics through intelligent data sampling and multi-modal pipeline execution.
+          </p>
+        </div>
+        <div class="w-full md:w-1/3 aspect-square rounded-xl overflow-hidden neu-surface p-4 bg-surface-container">
+          <div class="w-full h-full rounded-lg overflow-hidden relative">
+            <img alt="Data Architecture" class="w-full h-full object-cover grayscale opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiYJnkOtLuRxnnJ0lt67rfWdR3H9BOWdKkrzp9JvpbqFdAVnyeY23LsH7OnmsNLgLEoYn5h-3hElxmly4vLwginLOEH9jxBWV-KCkfYGzpipmeuQ0UELwWecti7AftPaiJicbzNMijKYljJzGBAkyOzETJOptRGgtcNpAPEW_HNHsbOv6DUVT1iFbKRo3s_LFRx43FKnQSECKzGm4HFKZ8WMlTbre2IJo5EIVupqc14G1qvVT9u_a2BCuoJA47jjBBMoIIGWC6WFVy"/>
+            <div class="absolute inset-0 bg-primary/10 mix-blend-overlay"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bento Grid: Architecture & Config -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <!-- Architecture Overview (2 Columns Wide) -->
+      <div class="lg:col-span-2 space-y-8">
+        <h3 class="text-2xl font-headline font-bold tracking-tight flex items-center gap-3 px-2">
+          <span class="w-8 h-[2px] bg-primary"></span>
+          Architecture Overview
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <!-- Storage Layer -->
+          <div class="neu-pressed rounded-lg p-8 bg-surface-container-low border border-white/40 flex flex-col justify-between min-h-[220px]">
+            <div>
+              <span class="material-symbols-outlined text-primary mb-4 block">storage</span>
+              <h4 class="font-headline font-bold text-on-surface mb-2">Storage Layer</h4>
+            </div>
+            <p class="text-on-surface-variant text-sm leading-relaxed">
+              LSM-tree with memtable, SSTables, and columnar segments.
+            </p>
+          </div>
+          <!-- Query Layer -->
+          <div class="neu-pressed rounded-lg p-8 bg-surface-container-low border border-white/40 flex flex-col justify-between min-h-[220px]">
+            <div>
+              <span class="material-symbols-outlined text-primary mb-4 block">terminal</span>
+              <h4 class="font-headline font-bold text-on-surface mb-2">Query Layer</h4>
+            </div>
+            <p class="text-on-surface-variant text-sm leading-relaxed">
+              SQL parser, planner, and pipelines (row, columnar, mixed).
+            </p>
+          </div>
+          <!-- AQP Layer -->
+          <div class="neu-pressed rounded-lg p-8 bg-surface-container-low border border-white/40 flex flex-col justify-between min-h-[220px]">
+            <div>
+              <span class="material-symbols-outlined text-primary mb-4 block">analytics</span>
+              <h4 class="font-headline font-bold text-on-surface mb-2">AQP Layer</h4>
+            </div>
+            <p class="text-on-surface-variant text-sm leading-relaxed">
+              Sampling, estimators, and accuracy control (0.70 target).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Config Facade -->
+      <div class="space-y-8">
+        <h3 class="text-2xl font-headline font-bold tracking-tight px-2">Quick Config</h3>
+        <div class="neu-pressed rounded-lg p-8 bg-surface-container-high flex flex-col gap-6">
+          <!-- accuracy_target -->
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+              <label class="text-sm font-medium text-on-surface-variant">Accuracy Target</label>
+              <span id="facade-accuracy-val" class="text-lg font-headline font-bold text-primary">0.70</span>
+            </div>
+            <input id="facade-accuracy" type="range" min="0.1" max="1.0" step="0.05" value="0.70"
+              class="w-full accent-primary neu-pressed rounded-full h-2 cursor-pointer" />
+          </div>
+          <!-- k -->
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+              <label class="text-sm font-medium text-on-surface-variant">Confidence k</label>
+              <span id="facade-k-val" class="text-lg font-headline font-bold text-primary">2.0</span>
+            </div>
+            <input id="facade-k" type="range" min="0.5" max="10.0" step="0.5" value="2.0"
+              class="w-full accent-primary neu-pressed rounded-full h-2 cursor-pointer" />
+          </div>
+          <!-- memtable_row_limit -->
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+              <label class="text-sm font-medium text-on-surface-variant">Memtable Row Limit</label>
+              <span id="facade-memrows-val" class="text-lg font-headline font-bold text-on-surface">1048576</span>
+            </div>
+            <input id="facade-memrows" type="range" min="1000" max="2000000" step="1000" value="1048576"
+              class="w-full accent-primary neu-pressed rounded-full h-2 cursor-pointer" />
+          </div>
+          <div class="flex items-center gap-3 mt-2">
+            <button id="facade-apply-btn"
+              class="bg-black text-white px-6 py-2.5 rounded-full font-bold text-sm shadow-lg shadow-black/40 active:scale-95 transition-all hover:bg-slate-900">
+              Apply
+            </button>
+            <span id="facade-status" class="text-xs text-slate-500"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </section><!-- /tab-overview -->
+
+    <!-- ================================================================ -->
+    <!-- TAB: BENCHMARK                                                   -->
+    <!-- ================================================================ -->
+    <section id="tab-benchmark" class="hidden">
+    <section class="mt-4" id="benchmark">
+      <h3 class="text-2xl font-headline font-bold tracking-tight flex items-center gap-3 px-2 mb-8">
+        <span class="w-8 h-[2px] bg-primary"></span>
+        Benchmark
+        <span class="ml-2 px-3 py-0.5 rounded-full bg-surface-container-high text-primary text-xs font-bold tracking-widest uppercase">AQE vs SQLite</span>
+      </h3>
+
+      <!-- Init controls -->
+      <div class="neu-surface rounded-xl p-8 bg-surface flex flex-col gap-6 mb-8">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="material-symbols-outlined text-primary">settings</span>
+          <span class="font-headline font-bold text-on-surface">Engine Setup</span>
+          <span id="init-status" class="ml-auto text-xs text-slate-500"></span>
+        </div>
+        <div class="flex flex-wrap gap-4">
+          <button id="btn-gen-dataset"
+            class="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm neu-pressed bg-surface-container-low text-on-surface active:scale-95 transition-all hover:bg-surface-container">
+            <span class="material-symbols-outlined text-base">dataset</span>
+            Generate Dataset
+          </button>
+          <button id="btn-init-sqlite"
+            class="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm neu-pressed bg-surface-container-low text-on-surface active:scale-95 transition-all hover:bg-surface-container">
+            <span class="material-symbols-outlined text-base">database</span>
+            Init SQLite
+          </button>
+          <button id="btn-init-aqe"
+            class="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm neu-pressed bg-surface-container-low text-on-surface active:scale-95 transition-all hover:bg-surface-container">
+            <span class="material-symbols-outlined text-base">bolt</span>
+            Load AQE
+          </button>
+          <div id="init-spinner" class="hidden flex items-center gap-2 text-sm text-slate-500">
+            <span class="material-symbols-outlined animate-spin text-primary text-base">autorenew</span>
+            <span id="init-spinner-label">Working…</span>
+          </div>
+        </div>
+        <div id="init-log" class="hidden neu-pressed rounded-lg px-4 py-3 text-xs font-mono text-slate-600 bg-surface-container-high whitespace-pre-wrap max-h-28 overflow-auto"></div>
+      </div>
+
+      <!-- Query runner -->
+      <div class="neu-surface rounded-xl p-8 bg-surface flex flex-col gap-6">
+        <!-- Query input row -->
+        <div class="flex flex-col md:flex-row gap-4 items-start md:items-end">
+          <div class="flex-1 flex flex-col gap-2">
+            <label class="text-[10px] uppercase tracking-widest font-bold text-slate-500" for="bench-select">Benchmark Query</label>
+            <div class="neu-pressed rounded-lg overflow-hidden">
+              <select id="bench-select" class="w-full bg-transparent px-4 py-3 text-sm font-medium text-on-surface outline-none cursor-pointer">
+                <option value="">— select a query —</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex-1 flex flex-col gap-2">
+            <label class="text-[10px] uppercase tracking-widest font-bold text-slate-500" for="sql-input">SQL</label>
+            <div class="neu-pressed rounded-lg overflow-hidden">
+              <input id="sql-input" type="text" placeholder="SELECT COUNT(*) FROM logs"
+                class="w-full bg-transparent px-4 py-3 text-sm font-mono text-on-surface outline-none placeholder:text-slate-400" />
+            </div>
+          </div>
+          <button id="run-btn"
+            class="shrink-0 bg-black text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-black/40 active:scale-95 transition-all hover:bg-slate-900 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">play_arrow</span>
+            Run
+          </button>
+          <button id="run-all-btn"
+            class="shrink-0 neu-pressed border-0 text-slate-600 px-6 py-3 rounded-full font-bold active:scale-95 transition-all flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">playlist_play</span>
+            Run All
+          </button>
+          <button id="load-cached-btn"
+            class="shrink-0 neu-pressed border-0 text-slate-600 px-6 py-3 rounded-full font-bold active:scale-95 transition-all flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">history</span>
+            Load Cached
+          </button>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="lab-loading" class="hidden items-center gap-3 text-sm text-slate-500">
+          <span class="material-symbols-outlined animate-spin text-primary">autorenew</span>
+          Running query…
+        </div>
+
+        <!-- Side-by-side single-query results -->
+        <div id="lab-results" class="hidden grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+          <!-- AQE panel -->
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary text-lg">bolt</span>
+                <span class="font-headline font-bold text-on-surface">AQE</span>
+              </div>
+              <span id="aqe-confidence" class="px-3 py-0.5 rounded-full text-[10px] font-bold tracking-widest uppercase bg-surface-container-high text-primary"></span>
+            </div>
+            <div id="aqe-result" class="text-3xl font-headline font-bold text-on-surface tracking-tighter break-all"></div>
+            <div class="grid grid-cols-2 gap-3 mt-2">
+              <div class="neu-surface rounded-lg p-3 bg-surface text-center">
+                <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Time</div>
+                <div id="aqe-time" class="text-lg font-headline font-bold text-primary"></div>
+              </div>
+              <div class="neu-surface rounded-lg p-3 bg-surface text-center">
+                <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Rows Scanned</div>
+                <div id="aqe-rows" class="text-lg font-headline font-bold text-on-surface"></div>
+              </div>
+            </div>
+            <div id="aqe-warnings" class="hidden text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mt-1"></div>
+          </div>
+          <!-- SQLite panel -->
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low flex flex-col gap-4">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-slate-500 text-lg">database</span>
+              <span class="font-headline font-bold text-on-surface">SQLite</span>
+            </div>
+            <div id="sqlite-result" class="text-3xl font-headline font-bold text-on-surface tracking-tighter break-all"></div>
+            <div class="neu-surface rounded-lg p-3 bg-surface text-center mt-2">
+              <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Time</div>
+              <div id="sqlite-time" class="text-lg font-headline font-bold text-on-surface"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Speedup badge -->
+        <div id="speedup-badge" class="hidden justify-center mt-2">
+          <span id="speedup-text" class="px-6 py-2 rounded-full font-bold text-sm shadow-md"></span>
+        </div>
+
+        <!-- Run-all / cached results table -->
+        <div id="bench-table-wrap" class="hidden mt-4">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-[10px] uppercase tracking-widest font-bold text-slate-500" id="bench-table-label">Benchmark Results</span>
+            <!-- Category filter pills -->
+            <div id="cat-pills" class="flex flex-wrap gap-2"></div>
+          </div>
+          <div class="neu-pressed rounded-xl overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-white/30 text-[10px] uppercase tracking-widest text-slate-500">
+                  <th class="text-left px-4 py-3">Label</th>
+                  <th class="text-left px-4 py-3 hidden md:table-cell">Category</th>
+                  <th class="text-right px-4 py-3">AQE ms</th>
+                  <th class="text-right px-4 py-3">SQLite ms</th>
+                  <th class="text-right px-4 py-3">Speedup</th>
+                  <th class="text-right px-4 py-3 hidden md:table-cell">Strategy</th>
+                </tr>
+              </thead>
+              <tbody id="bench-tbody" class="divide-y divide-white/20"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+    </section><!-- /tab-benchmark -->
+
+    <!-- ================================================================ -->
+    <!-- TAB: LIVE                                                         -->
+    <!-- ================================================================ -->
+    <section id="tab-live" class="hidden">
+    <!-- Live Ingestion Section -->
+    <section class="mt-4" id="live">
+      <h3 class="text-2xl font-headline font-bold tracking-tight flex items-center gap-3 px-2 mb-8">
+        <span class="w-8 h-[2px] bg-primary"></span>
+        Live Ingestion
+        <span id="live-badge" class="ml-2 px-3 py-0.5 rounded-full bg-surface-container-high text-slate-500 text-xs font-bold tracking-widest uppercase">Idle</span>
+      </h3>
+      <div class="neu-surface rounded-xl p-8 bg-surface flex flex-col gap-6">
+        <!-- Controls row -->
+        <div class="flex flex-wrap items-center gap-4">
+          <button id="live-start-btn"
+            class="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm bg-black text-white shadow-lg shadow-black/40 active:scale-95 transition-all hover:bg-slate-900">
+            <span class="material-symbols-outlined text-base">play_arrow</span>
+            Start
+          </button>
+          <button id="live-stop-btn"
+            class="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm neu-pressed bg-surface-container-low text-on-surface active:scale-95 transition-all">
+            <span class="material-symbols-outlined text-base">stop</span>
+            Stop
+          </button>
+          <div class="flex gap-6 ml-4">
+            <div class="text-center">
+              <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Rows/sec</div>
+              <div id="live-rate" class="text-2xl font-headline font-bold text-primary">—</div>
+            </div>
+            <div class="text-center">
+              <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Total Inserted</div>
+              <div id="live-total" class="text-2xl font-headline font-bold text-on-surface">—</div>
+            </div>
+            <div class="text-center">
+              <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Reservoir Size</div>
+              <div id="live-reservoir" class="text-2xl font-headline font-bold text-on-surface">—</div>
+            </div>
+          </div>
+        </div>
+        <!-- Query on ingested data -->
+        <div class="border-t border-white/20 pt-6 flex flex-col gap-4">
+          <span class="text-[10px] uppercase tracking-widest font-bold text-slate-500">Query Ingested Data</span>
+          <div class="flex flex-col md:flex-row gap-3 items-start md:items-end">
+            <div class="neu-pressed rounded-lg overflow-hidden flex-shrink-0">
+              <select id="live-query-select" class="bg-transparent px-4 py-3 text-sm font-medium text-on-surface outline-none cursor-pointer">
+                <optgroup label="SIMPLE">
+                  <option value="SELECT COUNT(*) FROM logs">COUNT all</option>
+                  <option value="SELECT SUM(level) FROM logs">SUM level</option>
+                  <option value="SELECT AVG(level) FROM logs">AVG level</option>
+                </optgroup>
+                <optgroup label="EQUALITY FILTER">
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 0">COUNT status=0</option>
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 1">COUNT status=1</option>
+                  <option value="SELECT COUNT(*) FROM logs WHERE country = 2">COUNT country=2</option>
+                  <option value="SELECT SUM(level) FROM logs WHERE status = 0">SUM level WHERE status=0</option>
+                </optgroup>
+                <optgroup label="BITMAP — AND / OR / NOT">
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 1">COUNT AND</option>
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 2">COUNT AND (alt)</option>
+                  <option value="SELECT SUM(level) FROM logs WHERE status = 0 AND country = 1">SUM AND</option>
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 0 OR country = 1">COUNT OR</option>
+                  <option value="SELECT AVG(level) FROM logs WHERE status = 0 OR country = 1">AVG OR</option>
+                  <option value="SELECT COUNT(*) FROM logs WHERE NOT status = 1">COUNT NOT</option>
+                  <option value="SELECT SUM(level) FROM logs WHERE NOT status = 2">SUM NOT</option>
+                </optgroup>
+                <optgroup label="GROUP BY">
+                  <option value="SELECT COUNT(*) FROM logs GROUP BY country">COUNT GROUP BY country</option>
+                  <option value="SELECT COUNT(*) FROM logs GROUP BY status">COUNT GROUP BY status</option>
+                  <option value="SELECT SUM(level) FROM logs GROUP BY status">SUM level GROUP BY status</option>
+                  <option value="SELECT AVG(level) FROM logs GROUP BY country">AVG level GROUP BY country</option>
+                </optgroup>
+                <optgroup label="BITMAP + GROUP BY">
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 0 OR country = 1 GROUP BY country">COUNT OR GROUP BY country</option>
+                  <option value="SELECT SUM(level) FROM logs WHERE NOT status = 2 GROUP BY status">SUM NOT GROUP BY status</option>
+                  <option value="SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 1 GROUP BY country">COUNT AND GROUP BY country</option>
+                </optgroup>
+                <option value="custom">— custom SQL —</option>
+              </select>
+            </div>
+            <div class="neu-pressed rounded-lg overflow-hidden flex-1">
+              <input id="live-sql-input" type="text" placeholder="SELECT COUNT(*) FROM logs"
+                class="w-full bg-transparent px-4 py-3 text-sm font-mono text-on-surface outline-none placeholder:text-slate-400" />
+            </div>
+            <button id="live-run-btn"
+              class="shrink-0 bg-black text-white px-6 py-3 rounded-full font-bold text-sm shadow-lg shadow-black/40 active:scale-95 transition-all hover:bg-slate-900 flex items-center gap-2">
+              <span class="material-symbols-outlined text-base">bolt</span>
+              Run
+            </button>
+          </div>
+          <div id="live-query-result" class="hidden neu-pressed rounded-xl p-5 bg-surface-container-low flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <span id="live-qr-value" class="text-2xl font-headline font-bold text-on-surface tracking-tighter break-all"></span>
+              <span id="live-qr-confidence" class="px-3 py-0.5 rounded-full text-[10px] font-bold tracking-widest uppercase bg-surface-container-high text-primary"></span>
+            </div>
+            <div class="flex gap-4 text-xs text-slate-500">
+              <span id="live-qr-time"></span>
+              <span id="live-qr-rows"></span>
+              <span id="live-qr-path"></span>
+            </div>
+            <div id="live-qr-groups" class="hidden overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead><tr class="border-b border-white/30 text-[10px] uppercase tracking-widest text-slate-500">
+                  <th class="text-left px-3 py-2">Group</th>
+                  <th class="text-right px-3 py-2">Value</th>
+                  <th class="text-right px-3 py-2">Confidence</th>
+                </tr></thead>
+                <tbody id="live-qr-groups-tbody" class="divide-y divide-white/20 font-mono"></tbody>
+              </table>
+            </div>
+            <div id="live-qr-warnings" class="hidden text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2"></div>
+          </div>
+        </div>
+
+        <!-- Sample table -->
+        <div class="neu-pressed rounded-xl overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-white/30 text-[10px] uppercase tracking-widest text-slate-500">
+                <th class="text-right px-4 py-3">user_id</th>
+                <th class="text-right px-4 py-3">status</th>
+                <th class="text-right px-4 py-3">country</th>
+                <th class="text-right px-4 py-3">timestamp</th>
+                <th class="text-right px-4 py-3">level</th>
+              </tr>
+            </thead>
+            <tbody id="live-tbody" class="divide-y divide-white/20 font-mono">
+              <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Press Start to begin live ingestion</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    </section><!-- /tab-live -->
+
+    <!-- ================================================================ -->
+    <!-- TAB: ADVANCED                                                     -->
+    <!-- ================================================================ -->
+    <section id="tab-advanced" class="hidden">
+      <h3 class="text-2xl font-headline font-bold tracking-tight flex items-center gap-3 px-2 mb-8 mt-4">
+        <span class="w-8 h-[2px] bg-primary"></span>
+        Advanced Config
+        <span class="ml-2 px-3 py-0.5 rounded-full bg-surface-container-high text-slate-500 text-xs font-bold tracking-widest uppercase">All Params</span>
+      </h3>
+      <div class="neu-surface rounded-xl p-8 bg-surface flex flex-col gap-8">
+        <div id="adv-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="text-sm text-slate-400">Loading config…</div>
+        </div>
+        <div class="flex items-center gap-4 border-t border-white/20 pt-6">
+          <button id="adv-save-btn"
+            class="bg-black text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-black/40 active:scale-95 transition-all hover:bg-slate-900 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">save</span>
+            Save Config
+          </button>
+          <button id="adv-reload-btn"
+            class="neu-pressed px-6 py-3 rounded-full font-bold text-sm text-slate-600 active:scale-95 transition-all flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">refresh</span>
+            Reload
+          </button>
+          <span id="adv-status" class="text-xs text-slate-500 ml-2"></span>
+        </div>
+      </div>
+    </section><!-- /tab-advanced -->
+
+    <!-- ================================================================ -->
+    <!-- TAB: DOCS                                                         -->
+    <!-- ================================================================ -->
+    <section id="tab-docs" class="hidden">
+      <div class="mt-4 space-y-16 max-w-4xl">
+
+        <!-- Header -->
+        <div>
+          <h3 class="text-3xl font-headline font-bold tracking-tight text-on-surface mb-3">Engine Internals</h3>
+          <p class="text-on-surface-variant text-base leading-relaxed">Every design decision, algorithm, and magic number — from the LSM tree to the AQP pipeline.</p>
+        </div>
+
+        <!-- ── 1. TYPE SYSTEM ─────────────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Type System</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p><span class="font-bold text-on-surface">Value</span> is a 3-variant enum: <code class="font-mono bg-white/50 px-1 rounded">Int(i64)</code>, <code class="font-mono bg-white/50 px-1 rounded">Float(f64)</code>, <code class="font-mono bg-white/50 px-1 rounded">String(String)</code>. Every cell in every row is one of these — no nulls, no optional, always sized. This keeps the aggregation hot path branchless on the common integer case.</p>
+            <p><span class="font-bold text-on-surface">RowDisk</span> carries four fields: <code class="font-mono bg-white/50 px-1 rounded">version: u32</code> for future schema migration, <code class="font-mono bg-white/50 px-1 rounded">crc: u32</code> checked on read when <code class="font-mono bg-white/50 px-1 rounded">verify_crc = true</code>, <code class="font-mono bg-white/50 px-1 rounded">seq: u64</code> assigned from a global <code class="font-mono bg-white/50 px-1 rounded">AtomicU64</code> at insert time (used for dedup during compaction — keep the highest seq), and <code class="font-mono bg-white/50 px-1 rounded">values: Vec&lt;Value&gt;</code> in schema column order.</p>
+            <p><span class="font-bold text-on-surface">ColumnMetadata</span> is written per-column per-segment at flush time: pre-computed <code class="font-mono bg-white/50 px-1 rounded">sum</code>, <code class="font-mono bg-white/50 px-1 rounded">min</code>, <code class="font-mono bg-white/50 px-1 rounded">max</code>, <code class="font-mono bg-white/50 px-1 rounded">distinct_count</code> (from HLL), <code class="font-mono bg-white/50 px-1 rounded">run_count</code> (for RLE heuristic), CRC32 of the column blob. This is what enables the <span class="text-primary font-semibold">FastPath</span> — COUNT/SUM on unfiltered data reads only this struct, zero row IO.</p>
+            <p><span class="font-bold text-on-surface">QueryProfile</span> accumulates timing for each phase (bloom filter, IO read, deserialization, filter eval, aggregation) so the REPL and API can show where time is spent.</p>
+          </div>
+        </div>
+
+        <!-- ── 2. STORAGE: MEMTABLE ────────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Memtable</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>A <code class="font-mono bg-white/50 px-1 rounded">BTreeMap&lt;u64, RowDisk&gt;</code> keyed by the first column value (user_id). BTree because scan order matters for merge during compaction, and because range predicates on the primary key can skip early. Wrapped in a <code class="font-mono bg-white/50 px-1 rounded">RwLock</code> — reads take a shared lock, the flush drain takes an exclusive lock only for the few microseconds needed to drain + clear (no lock held during the actual SSTable write to disk).</p>
+            <p>The flush uses a <span class="font-bold text-on-surface">double-checked locking</span> pattern: read-lock to test, release, write-lock to re-test and drain. This avoids a thundering herd when two threads both see "should flush" simultaneously — only the first writer through actually flushes, the second finds an empty table and exits cleanly.</p>
+            <p><span class="font-bold text-on-surface">FlushTrigger</span> checks two limits: <code class="font-mono bg-white/50 px-1 rounded">memtable_row_limit</code> (row count) and <code class="font-mono bg-white/50 px-1 rounded">memtable_size_limit</code> (estimated bytes). Whichever fires first triggers a flush. The size estimate is approximate (row count × average row width) — exact tracking would require per-insert accounting.</p>
+          </div>
+        </div>
+
+        <!-- ── 3. STORAGE: SSTABLE (ROW FORMAT) ──────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>SSTable — Row Format</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>On-disk layout: <code class="font-mono bg-white/50 px-1 rounded">b"SQTE"</code> magic (4 bytes) → metadata length (4 bytes, little-endian) → bincode-serialized <code class="font-mono bg-white/50 px-1 rounded">SSTableMetadata</code> → bincode Bloom filter → bincode row array. Magic is checked first to fast-fail on corrupt or wrong-type files. Metadata checksum is verified independently of row CRC.</p>
+            <p>The <span class="font-bold text-on-surface">Bloom filter</span> stores the first-column value of every row. On a point lookup for user_id X, if the Bloom says "definitely not here", the reader skips the entire file. Default FPR = 1% — meaning 1 in 100 negative lookups will still read the full file. Tunable via <code class="font-mono bg-white/50 px-1 rounded">bloom_fpr</code>.</p>
+            <p>Row-format SSTables are a transitional format — data written during live ingestion lands here first, then gets compacted into columnar segments. Queries that land on uncompacted SSTables use the <span class="font-bold text-on-surface">Row Pipeline</span> with optional sampling; queries against compacted data use the faster <span class="font-bold text-on-surface">Columnar Pipeline</span>.</p>
+          </div>
+        </div>
+
+        <!-- ── 4. STORAGE: COLUMNAR SEGMENTS ─────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Columnar Segments</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>Each segment is a <span class="font-bold text-on-surface">directory</span>, not a single file. Inside: one <code class="font-mono bg-white/50 px-1 rounded">&#123;col&#125;.col</code> per column, <code class="font-mono bg-white/50 px-1 rounded">meta.toml</code> with row counts and column stats, plus index files (<code class="font-mono bg-white/50 px-1 rounded">.bitmap</code>, <code class="font-mono bg-white/50 px-1 rounded">.tdigest</code>, <code class="font-mono bg-white/50 px-1 rounded">.hll</code>, <code class="font-mono bg-white/50 px-1 rounded">.range_blocks</code>, <code class="font-mono bg-white/50 px-1 rounded">aqp.sample</code>). Directory structure means indexes can be added or dropped without rewriting the column data.</p>
+
+            <p class="font-bold text-on-surface">Encoding selection (automatic at write time):</p>
+            <ul class="list-disc pl-5 space-y-1 text-on-surface-variant">
+              <li><span class="text-on-surface font-semibold">RLE</span> — chosen if <code class="font-mono bg-white/50 px-1 rounded">distinct_count &lt; row_count / 10</code>. The heuristic: fewer than 10% unique values means runs are long enough to make RLE worth it. Format: magic <code class="font-mono bg-white/50 px-1 rounded">b"RLI4"</code> + version + run count + array of <code class="font-mono bg-white/50 px-1 rounded">RleRunI64 &#123;value, length, pad&#125;</code> (16 bytes each, padded for <code class="font-mono bg-white/50 px-1 rounded">bytemuck</code> zero-copy casting). Columns like <code class="font-mono bg-white/50 px-1 rounded">status</code> (3 values) and <code class="font-mono bg-white/50 px-1 rounded">country</code> (5 values) always RLE.</li>
+              <li><span class="text-on-surface font-semibold">Delta</span> — chosen if values are monotonically non-decreasing (detected via <code class="font-mono bg-white/50 px-1 rounded">windows(2).all(|w| w[0] &lt;= w[1])</code>). Stores base value + differences. Effective for <code class="font-mono bg-white/50 px-1 rounded">user_id</code> (sequential) and <code class="font-mono bg-white/50 px-1 rounded">timestamp</code> (sorted after compaction).</li>
+              <li><span class="text-on-surface font-semibold">Bincode</span> — fallback for high-cardinality random data like <code class="font-mono bg-white/50 px-1 rounded">level</code>.</li>
+            </ul>
+
+            <p class="font-bold text-on-surface mt-2">Indexes built per numeric column:</p>
+            <ul class="list-disc pl-5 space-y-1 text-on-surface-variant">
+              <li><span class="text-on-surface font-semibold">HLL Sketch</span> — precision 10, 1024 registers, alpha correction per register count. Used to estimate distinct count for RLE decision and for cardinality stats exposed in metadata. Never used at query time directly.</li>
+              <li><span class="text-on-surface font-semibold">Bitmap Index</span> — only built if distinct_count ≤ 256. Above that, the bitmap would be too sparse to be useful and large on disk. Each distinct value maps to a bitset of row positions. Operations: AND (filter intersection), OR (union), NOT (complement via XOR with all-ones mask). Stored with magic <code class="font-mono bg-white/50 px-1 rounded">b"BMP1"</code>.</li>
+              <li><span class="text-on-surface font-semibold">Range Blocks</span> — row space divided into blocks of 1024 rows each. Stores min/max per block. Enables skipping entire blocks when a range predicate can't possibly match (like a B-tree zone map, but flat).</li>
+              <li><span class="text-on-surface font-semibold">T-Digest</span> — centroid-based quantile sketch. Compression parameter controls accuracy vs size. Built at segment write time, used for <code class="font-mono bg-white/50 px-1 rounded">APPROX_PERCENTILE</code> without re-scanning data.</li>
+              <li><span class="text-on-surface font-semibold">AQP Sample</span> — a pre-sampled subset of rows serialized into <code class="font-mono bg-white/50 px-1 rounded">aqp.sample</code> using deterministic hash-based row sampling. Sample rate determined by <code class="font-mono bg-white/50 px-1 rounded">aqp_mode</code>. Used by AQP pipeline to answer filtered aggregations without reading full column data.</li>
+            </ul>
+
+            <p>Column data is memory-mapped via <code class="font-mono bg-white/50 px-1 rounded">memmap2</code> — the OS page cache handles read buffering. Repeated queries on the same segment don't re-read from disk after the first access.</p>
+          </div>
+        </div>
+
+        <!-- ── 5. QUERY PLANNER ───────────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Query Planner</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>The planner doesn't produce a cost-based plan — it uses a deterministic rule cascade. The rules in order:</p>
+            <ol class="list-decimal pl-5 space-y-2 text-on-surface-variant">
+              <li><span class="text-on-surface font-semibold">FastPath</span> — no filter, no GROUP BY, not APPROX_PERCENTILE, all data is in columnar segments (no uncompacted SSTables). Returns metadata-only result: reads only <code class="font-mono bg-white/50 px-1 rounded">ColumnMetadata.sum</code> and <code class="font-mono bg-white/50 px-1 rounded">row_count</code>. Zero row IO. Exact result.</li>
+              <li><span class="text-on-surface font-semibold">Row</span> — no columnar segments exist. Uses row pipeline with Bloom filter pre-check and optional sampling.</li>
+              <li><span class="text-on-surface font-semibold">Columnar</span> — no row SSTables. Uses full columnar pipeline with index selection.</li>
+              <li><span class="text-on-surface font-semibold">Mixed</span> — both exist. Runs both pipelines independently, merges results with weighted averaging (row count-weighted for AVG).</li>
+            </ol>
+            <p>Required columns are collected from the AST (<code class="font-mono bg-white/50 px-1 rounded">QueryPlan::required_columns()</code>) so the columnar reader only deserializes the columns actually needed — the rest stay on disk.</p>
+            <p><code class="font-mono bg-white/50 px-1 rounded">QueryPlan</code> now carries <code class="font-mono bg-white/50 px-1 rounded">limit: Option&lt;u64&gt;</code> and <code class="font-mono bg-white/50 px-1 rounded">offset: Option&lt;u64&gt;</code>. These are parsed from <code class="font-mono bg-white/50 px-1 rounded">LIMIT n</code> and <code class="font-mono bg-white/50 px-1 rounded">OFFSET m</code> SQL clauses. For aggregation queries, LIMIT acts as a <span class="font-bold text-on-surface">scan budget</span> — it limits the number of input rows consumed, not the number of output rows (which is always one scalar or one group-per-key). The result includes <code class="font-mono bg-white/50 px-1 rounded">next_offset = offset + limit</code> so callers can page through data by passing it back as the next query's <code class="font-mono bg-white/50 px-1 rounded">OFFSET</code>.</p>
+          </div>
+        </div>
+
+        <!-- ── 6. COLUMNAR PIPELINE STRATEGY SELECTION ───────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Columnar Pipeline — Strategy Selection</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>Inside the columnar executor, a second strategy selection chooses how to evaluate the filter. Strategies (priority order):</p>
+            <ul class="list-disc pl-5 space-y-2 text-on-surface-variant">
+              <li><span class="text-on-surface font-semibold">MetadataFastPath</span> — no filter at all. Return pre-computed sums.</li>
+              <li><span class="text-on-surface font-semibold">GroupStatsScalar</span> — no filter, GROUP BY with pre-computed per-group sums on disk. Read group stats file, done.</li>
+              <li><span class="text-on-surface font-semibold">RangeBlocks</span> — range predicate (&gt;, &lt;, &gt;=, &lt;=) on a column with a range block index. Skip blocks outside the range, scan only candidates.</li>
+              <li><span class="text-on-surface font-semibold">BitmapScalar / BitmapGroup</span> — equality predicate(s) on a low-cardinality column. Load bitmap(s), perform AND/OR/NOT operations, count set bits or iterate positions.</li>
+              <li><span class="text-on-surface font-semibold">InclusionExclusionCount</span> — OR predicate between two equality conditions on the same or different columns. Uses |A ∪ B| = |A| + |B| - |A ∩ B| on bitmaps — no row scan at all.</li>
+              <li><span class="text-on-surface font-semibold">RleScan</span> — column is RLE-encoded, filter is equality. Scan RLE runs directly: O(runs) instead of O(rows). For <code class="font-mono bg-white/50 px-1 rounded">status = 0</code> on a column with 3 values, this is ~3 comparisons per segment regardless of segment size.</li>
+              <li><span class="text-on-surface font-semibold">ScanFallback</span> — decompress full column, apply predicate row by row. Respects <code class="font-mono bg-white/50 px-1 rounded">LIMIT</code>/<code class="font-mono bg-white/50 px-1 rounded">OFFSET</code>: skips the first <code class="font-mono bg-white/50 px-1 rounded">offset</code> matched rows, then breaks out of the loop once <code class="font-mono bg-white/50 px-1 rounded">limit</code> rows have been consumed — no further decompression occurs.</li>
+              <li><span class="text-on-surface font-semibold">RangeBlocks (block pruning)</span> — for COUNT queries on a range predicate, each 1024-row block is classified as fully inside the range (add <code class="font-mono bg-white/50 px-1 rounded">row_count</code>, no decode), fully outside (skip), or a boundary block (decode only that block's rows). For a 1M-row segment, a predicate matching 10% of data means ~88 full-skip blocks, ~2 boundary blocks, and ~888 full-include blocks — only the 2 boundary blocks are ever decoded.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- ── 7. AQP: SAMPLING MATH ─────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>AQP — Sampling Math</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p><span class="font-bold text-on-surface">Sampling rate formula:</span> <code class="font-mono bg-white/50 px-1 rounded">rate = accuracy_target.powf(k)</code>. The power-law relationship means increasing <code class="font-mono bg-white/50 px-1 rounded">k</code> makes the rate more sensitive to accuracy — at k=2, accuracy 0.9 → rate 0.81; at k=4, accuracy 0.9 → rate 0.66. Lower rate = faster query, lower accuracy.</p>
+            <p><span class="font-bold text-on-surface">Split sampling:</span> SST-level rate and row-level rate are both <code class="font-mono bg-white/50 px-1 rounded">sqrt(rate)</code>. Combined probability = sqrt(r) × sqrt(r) = r. This avoids having to scan all rows in a selected SSTable — rows within a selected SSTable are still subsampled.</p>
+            <p><span class="font-bold text-on-surface">Scaling:</span> COUNT and SUM results are multiplied by <code class="font-mono bg-white/50 px-1 rounded">1 / sampling_rate</code> to produce an unbiased population estimate. AVG and APPROX_PERCENTILE are left unchanged — they are ratio statistics that are already self-normalizing.</p>
+            <p><span class="font-bold text-on-surface">Variance estimation:</span></p>
+            <ul class="list-disc pl-5 space-y-1 text-on-surface-variant">
+              <li>COUNT/SUM: Hypergeometric variance <code class="font-mono bg-white/50 px-1 rounded">((1-sr) / sr²) × count</code>. Assumes sampling without replacement.</li>
+              <li>AVG: Sample variance with Bessel correction <code class="font-mono bg-white/50 px-1 rounded">Σ(x-x̄)² / (n-1)</code> divided by n.</li>
+              <li>95% confidence interval: ±1.96 × stderr in both cases.</li>
+              <li>Per-group error: <code class="font-mono bg-white/50 px-1 rounded">1 / sqrt(group_sample_count)</code> — relative standard error of mean for that group.</li>
+            </ul>
+            <p><span class="font-bold text-on-surface">Fallback to exact:</span> If filtered sample rows &lt; <code class="font-mono bg-white/50 px-1 rounded">min_filtered_rows</code> (32/64/128 by mode), AQP gives up and runs the exact columnar pipeline instead. This prevents high-error estimates on rare predicates where the sample is too thin.</p>
+          </div>
+        </div>
+
+        <!-- ── 8. AQP: T-DIGEST ───────────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>AQP — T-Digest</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>T-Digest stores a list of <span class="font-bold text-on-surface">centroids</span> — each a (mean, weight) pair representing a cluster of values. The key invariant: centroids near the tails (0th and 100th percentile) are smaller (represent fewer values) than centroids in the middle. This gives high accuracy at the extremes where percentile estimates matter most.</p>
+            <p><span class="font-bold text-on-surface">Construction:</span> values are sorted, then chunked into groups of size <code class="font-mono bg-white/50 px-1 rounded">total / compression</code>. Each chunk becomes one centroid with mean = chunk average, weight = chunk size. Higher compression → more centroids → better accuracy → larger index file.</p>
+            <p><span class="font-bold text-on-surface">Merge:</span> Two digests are merged by concatenating centroids and re-compressing. Used when combining T-Digests from multiple segments for a single query.</p>
+            <p><span class="font-bold text-on-surface">Quantile query:</span> Walk centroid list tracking cumulative weight. When cumulative weight / total weight crosses the target quantile, interpolate between adjacent centroids. O(compression) per query.</p>
+            <p><span class="font-bold text-on-surface">Compression by mode:</span> Fast=50, Balanced=100, Accurate=200. A compression of 100 means at most 100 centroids per digest. For 1M rows, each centroid represents ~10,000 values on average (fewer at tails).</p>
+          </div>
+        </div>
+
+        <!-- ── 9. AQP: RESERVOIR SAMPLER ─────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>AQP — Reservoir Sampler (Vitter's Algorithm R)</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>Maintains a uniform random sample of a stream where the total size is unknown in advance. On each insert of the <code class="font-mono bg-white/50 px-1 rounded">i</code>-th row:</p>
+            <ol class="list-decimal pl-5 space-y-1 text-on-surface-variant">
+              <li>If reservoir has fewer than <code class="font-mono bg-white/50 px-1 rounded">capacity</code> rows: add unconditionally.</li>
+              <li>Else: pick random index j in [0, i]. If j &lt; capacity, replace reservoir[j] with the new row.</li>
+            </ol>
+            <p>This guarantees every row in the stream has equal probability <code class="font-mono bg-white/50 px-1 rounded">capacity / total_seen</code> of being in the reservoir at any time — regardless of stream length. The live ingestion reservoir has capacity 1000. After 10,000 inserts, each row has a 10% chance of being in the reservoir.</p>
+            <p>The reservoir is <span class="font-bold text-on-surface">ephemeral</span> — it lives in memory only and resets on engine restart. It's not the same as the AQP sample baked into segment files (which is deterministic and persistent). The reservoir is for live monitoring and the <code class="font-mono bg-white/50 px-1 rounded">/api/live/sample</code> endpoint.</p>
+          </div>
+        </div>
+
+        <!-- ── 10. COMPACTION ─────────────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Compaction</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>Compaction runs on a background thread every <code class="font-mono bg-white/50 px-1 rounded">compaction_interval_secs</code> seconds. <code class="font-mono bg-white/50 px-1 rounded">IS_COMPACTING: AtomicBool</code> prevents concurrent compaction runs — if one is already in progress the scheduler skips the tick.</p>
+
+            <p><span class="font-bold text-on-surface">STCS (Size-Tiered Compaction):</span> Groups files where consecutive sizes differ by less than 2×. Any bucket with ≥ <code class="font-mono bg-white/50 px-1 rounded">min_compaction_files</code> files gets merged. The 2× ratio is classic Cassandra STCS — it keeps similarly-sized files together, avoiding merging a 10MB file with a 1KB file (which would produce a lot of write amplification for little gain).</p>
+
+            <p><span class="font-bold text-on-surface">LCS (Leveled Compaction):</span> All L0 files compact together into L1 when either the file count exceeds 4 or total size exceeds <code class="font-mono bg-white/50 px-1 rounded">lcs_l1_max_bytes</code> (10MB). Produces fewer, larger files with better read performance at the cost of higher write amplification.</p>
+
+            <p><span class="font-bold text-on-surface">SegmentMerger:</span> Uses a min-heap over all input file readers. Each heap entry is a (row, reader_idx) pair. The heap orders by (user_id, seq DESC) — so among duplicates, the highest seq (latest write) surfaces first. Once a user_id is consumed from the heap, all subsequent entries with the same user_id are discarded. This is an O(N log K) merge where N = total rows, K = number of input files.</p>
+
+            <p>Output is written as a new columnar segment (with all indexes rebuilt). If the merged row count exceeds <code class="font-mono bg-white/50 px-1 rounded">max_segment_rows</code>, the output is split into multiple segments automatically.</p>
+          </div>
+        </div>
+
+        <!-- ── 11. DEDUPLICATION ──────────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Deduplication & Sequence Numbers</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>Every row gets a <code class="font-mono bg-white/50 px-1 rounded">seq: u64</code> from a global <code class="font-mono bg-white/50 px-1 rounded">AtomicU64</code> at insert time. Inserts are serialized through the memtable lock so seq numbers are strictly monotone across all rows in a single process run.</p>
+            <p>During compaction, if two rows share the same primary key (user_id), the one with the higher seq wins. This implements <span class="font-bold text-on-surface">last-write-wins</span> semantics — re-inserting the same user_id effectively updates the record. Queries on uncompacted data see both versions (the query pipeline deduplicates via the <code class="font-mono bg-white/50 px-1 rounded">mask</code> mechanism — memtable keys are excluded from SSTable scans to avoid double-counting).</p>
+          </div>
+        </div>
+
+        <!-- ── 12. BITMAP OPERATIONS ──────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Bitmap Index Operations</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>The bitmap is a sparse array of 64-bit words. A value V maps to row positions via: <code class="font-mono bg-white/50 px-1 rounded">word_index = row / 64</code>, <code class="font-mono bg-white/50 px-1 rounded">bit = row % 64</code>. Sparse storage means only words with at least one set bit are stored (word index → u64 map).</p>
+            <p>Bitwise AND between two bitmaps gives the set of rows matching both predicates (e.g. <code class="font-mono bg-white/50 px-1 rounded">status=0 AND country=1</code>). OR gives either. NOT gives complement. <code class="font-mono bg-white/50 px-1 rounded">count_ones()</code> uses the CPU's <code class="font-mono bg-white/50 px-1 rounded">popcount</code> instruction via Rust's <code class="font-mono bg-white/50 px-1 rounded">u64::count_ones()</code>.</p>
+            <p>For COUNT queries with AND/OR/NOT filters, the entire answer is the <code class="font-mono bg-white/50 px-1 rounded">popcount</code> of the resulting bitmap — no rows are ever deserialized. For SUM/AVG, the bitmap iterator gives row positions, and only those positions are read from the column file.</p>
+            <p><span class="font-bold text-on-surface">Inclusion-exclusion:</span> For OR of two equality conditions, |A ∪ B| = |A| + |B| - |A ∩ B|. This is three popcount operations instead of a full row scan — O(bitmap_words) = O(rows/64).</p>
+          </div>
+        </div>
+
+        <!-- ── 13. INGESTION PIPELINE ─────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Ingestion Pipeline</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>A single <code class="font-mono bg-white/50 px-1 rounded">Connection::insert(values)</code> call does four things atomically from the caller's perspective:</p>
+            <ol class="list-decimal pl-5 space-y-1 text-on-surface-variant">
+              <li>Schema validation — <code class="font-mono bg-white/50 px-1 rounded">values.len() == schema.columns.len()</code>. Rejects mismatched rows before touching any shared state.</li>
+              <li>Memtable write — assigns seq, inserts into BTreeMap under write lock.</li>
+              <li>Reservoir update — feeds row to Vitter sampler under a separate Mutex.</li>
+              <li>Flush check — double-checked locking; drains memtable to <code class="font-mono bg-white/50 px-1 rounded">ingestion_NNNNNN.aqe</code> if limits exceeded.</li>
+            </ol>
+            <p>The SSTable counter (<code class="font-mono bg-white/50 px-1 rounded">sst_counter: AtomicU64</code>) scans existing <code class="font-mono bg-white/50 px-1 rounded">ingestion_*.aqe</code> files on startup and begins at max+1. This prevents overwriting files from previous runs if the process restarts without compacting first.</p>
+          </div>
+        </div>
+
+        <!-- ── 14. CONSTANTS & MAGIC NUMBERS ─────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>Constants &amp; Magic Numbers</h4>
+          <div class="neu-pressed rounded-xl overflow-x-auto">
+            <table class="w-full text-xs font-mono">
+              <thead><tr class="border-b border-white/30 text-[10px] uppercase tracking-widest text-slate-500">
+                <th class="text-left px-4 py-3">Constant</th>
+                <th class="text-left px-4 py-3">Value</th>
+                <th class="text-left px-4 py-3">Why</th>
+              </tr></thead>
+              <tbody class="divide-y divide-white/20">
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">SSTable magic</td><td class="px-4 py-2.5 text-primary">b"SQTE"</td><td class="px-4 py-2.5 text-slate-500">Corrupt/wrong-type fast-fail on read</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">Bitmap magic</td><td class="px-4 py-2.5 text-primary">b"BMP1"</td><td class="px-4 py-2.5 text-slate-500">Version-tagged for future format changes</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">RLE magic</td><td class="px-4 py-2.5 text-primary">b"RLI4"</td><td class="px-4 py-2.5 text-slate-500">Distinguishes RLE from raw bincode columns</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">HLL precision</td><td class="px-4 py-2.5 text-primary">10</td><td class="px-4 py-2.5 text-slate-500">1024 registers → ~1.6% std error. Higher = better accuracy but 2× memory per +1</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">Bitmap max distinct</td><td class="px-4 py-2.5 text-primary">256</td><td class="px-4 py-2.5 text-slate-500">Above this, bitmap becomes larger than the column itself</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">Range block size</td><td class="px-4 py-2.5 text-primary">1024 rows</td><td class="px-4 py-2.5 text-slate-500">Matches typical page size; skip granularity</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">AlignedVec alignment</td><td class="px-4 py-2.5 text-primary">64 bytes</td><td class="px-4 py-2.5 text-slate-500">AVX-512 SIMD alignment requirement</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">RLE run struct size</td><td class="px-4 py-2.5 text-primary">16 bytes</td><td class="px-4 py-2.5 text-slate-500">value(8) + length(4) + pad(4) — padded for bytemuck zero-copy cast alignment</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">STCS size ratio</td><td class="px-4 py-2.5 text-primary">2×</td><td class="px-4 py-2.5 text-slate-500">Cassandra default — avoids merging wildly different file sizes</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">Confidence interval</td><td class="px-4 py-2.5 text-primary">1.96σ</td><td class="px-4 py-2.5 text-slate-500">95% CI under normality assumption (CLT)</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">RNG seed</td><td class="px-4 py-2.5 text-primary">42</td><td class="px-4 py-2.5 text-slate-500">Deterministic; reproducible sampling across runs</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">Reservoir capacity</td><td class="px-4 py-2.5 text-primary">1000</td><td class="px-4 py-2.5 text-slate-500">Fixed live sample size — enough for statistical overview without large memory cost</td></tr>
+                <tr class="hover:bg-white/10"><td class="px-4 py-2.5">AQP fast min rows</td><td class="px-4 py-2.5 text-primary">32 / 64 / 128</td><td class="px-4 py-2.5 text-slate-500">Below this the CLT doesn't hold well; fall back to exact</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── 15. LIMIT/OFFSET PAGINATION ──────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>LIMIT / OFFSET Pagination</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low space-y-4 text-sm leading-relaxed">
+            <p>SQL syntax: <code class="font-mono bg-white/50 px-1 rounded">SELECT COUNT(*) FROM logs WHERE level &gt; 500 LIMIT 100 OFFSET 200</code>. Parser tokenises left-to-right; <code class="font-mono bg-white/50 px-1 rounded">WHERE</code> clause collection stops at the first <code class="font-mono bg-white/50 px-1 rounded">LIMIT</code>, <code class="font-mono bg-white/50 px-1 rounded">OFFSET</code>, or <code class="font-mono bg-white/50 px-1 rounded">GROUP BY</code> token (<code class="font-mono bg-white/50 px-1 rounded">find_clause_end</code>). Both clauses are optional and independent.</p>
+            <p><span class="font-bold text-on-surface">Semantics for aggregation queries:</span> LIMIT is a scan budget, not an output cap. The output is always a single scalar (or one row per group). Passing <code class="font-mono bg-white/50 px-1 rounded">LIMIT 100</code> means "stop after 100 rows matched the filter" — useful for incremental aggregation over a dataset that's too large to aggregate in one shot, or for testing without waiting for a full scan.</p>
+            <p><span class="font-bold text-on-surface">Early exit points (all layers):</span></p>
+            <ul class="list-disc pl-5 space-y-1 text-on-surface-variant">
+              <li><code class="font-mono bg-white/50 px-1 rounded">scan_memtable</code> — BTreeMap iteration breaks when <code class="font-mono bg-white/50 px-1 rounded">results.len() &gt;= limit</code> after skipping <code class="font-mono bg-white/50 px-1 rounded">offset</code> matches.</li>
+              <li><code class="font-mono bg-white/50 px-1 rounded">pipeline.rs</code> (row path) — labeled <code class="font-mono bg-white/50 px-1 rounded">'outer</code> loop over SSTable files breaks when <code class="font-mono bg-white/50 px-1 rounded">rows_matched &gt;= offset + limit</code>.</li>
+              <li><code class="font-mono bg-white/50 px-1 rounded">col_pipeline.rs ScanFallback</code> — labeled <code class="font-mono bg-white/50 px-1 rounded">'scan_fallback</code> breaks at the same threshold.</li>
+            </ul>
+            <p><span class="font-bold text-on-surface">next_offset:</span> Every <code class="font-mono bg-white/50 px-1 rounded">QueryResult</code> carries <code class="font-mono bg-white/50 px-1 rounded">next_offset: Option&lt;u64&gt;</code>. When <code class="font-mono bg-white/50 px-1 rounded">LIMIT</code> was specified, it is set to <code class="font-mono bg-white/50 px-1 rounded">offset + limit</code>. Pass this value as <code class="font-mono bg-white/50 px-1 rounded">OFFSET</code> in the next query to get the next page. In Python: <code class="font-mono bg-white/50 px-1 rounded">result["next_offset"]</code>. Without LIMIT, <code class="font-mono bg-white/50 px-1 rounded">next_offset</code> is <code class="font-mono bg-white/50 px-1 rounded">None</code>.</p>
+            <p><span class="font-bold text-on-surface">Note on RangeBlocks:</span> The <code class="font-mono bg-white/50 px-1 rounded">RangeBlocks</code> strategy answers COUNT purely from block metadata and does not implement row-level early exit (it counts rows, not visits them). LIMIT on a RangeBlocks query still sets <code class="font-mono bg-white/50 px-1 rounded">next_offset</code> correctly but does not reduce IO — use <code class="font-mono bg-white/50 px-1 rounded">ScanFallback</code> queries (complex predicates / non-monotonic columns) for actual IO savings from pagination.</p>
+          </div>
+        </div>
+
+        <!-- ── 16. DATA FLOW DIAGRAM ──────────────────────────────────── -->
+        <div class="space-y-6">
+          <h4 class="text-xl font-headline font-bold flex items-center gap-3"><span class="w-6 h-[2px] bg-primary"></span>End-to-End Data Flow</h4>
+          <div class="neu-pressed rounded-xl p-6 bg-surface-container-low">
+            <pre class="text-xs font-mono text-on-surface-variant leading-relaxed overflow-x-auto">
+INSERT(row)
+  └─ schema validate
+  └─ memtable.insert()  ←── AtomicU64 seq
+  └─ reservoir.insert() ←── Vitter Algorithm R (cap 1000)
+  └─ maybe_flush()
+       └─ [if limits hit] drain memtable → ingestion_NNNNNN.aqe
+                                           (SSTable: bloom + rows + metadata sums)
+
+COMPACTION (background, every N secs)
+  └─ pick bucket (STCS: similar sizes / LCS: L0 overflow)
+  └─ SegmentMerger min-heap → deduplicate by (user_id, seq DESC)
+  └─ ColumnarWriter → seg_NNN/
+       ├─ &#123;col&#125;.col          (RLE / Delta / Bincode)
+       ├─ &#123;col&#125;.bitmap       (≤256 distinct values only)
+       ├─ &#123;col&#125;.tdigest      (quantile sketch)
+       ├─ &#123;col&#125;.range_blocks (zone maps, 1024 rows/block)
+       ├─ &#123;col&#125;.hll          (cardinality sketch)
+       ├─ aqp.sample         (pre-sampled rows, deterministic)
+       └─ meta.toml          (row_count, column stats)
+
+QUERY(sql)
+  └─ Parser  → QueryPlan &#123;aggregation, filter, group_by, limit, offset&#125;
+  └─ Planner → ExecutionPath
+       ├─ FastPath   → read meta.toml only       → exact result
+       ├─ Row        → bloom check → deserialize → filter → aggregate
+       ├─ Columnar   → strategy select:
+       │    ├─ BitmapScalar   → popcount(AND/OR/NOT bitmaps)
+       │    ├─ InclusionExcl  → |A|+|B|-|A∩B| (no row scan)
+       │    ├─ RleScan        → scan runs, skip non-matching
+       │    ├─ RangeBlocks    → skip blocks outside range
+       │    └─ ScanFallback   → decompress + filter [early exit at offset+limit]
+       │  [if aqp_mode≠off]
+       │    └─ AqpPipeline → read aqp.sample → filter → scale(1/rate)
+       │                   → T-Digest merge (APPROX_PERCENTILE)
+       │                   → confidence estimation
+       └─ Mixed → Row result + Columnar result → weighted merge
+  └─ + memtable scan (always exact, dedup mask applied, limit/offset respected)
+  └─ result.next_offset = offset + limit  (None if no LIMIT)</pre>
+          </div>
+        </div>
+
+      </div>
+    </section><!-- /tab-docs -->
+
+  </main>
+
+  <!-- BottomNavBar -->
+  <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-[#f6f9ff]/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-white/20 dark:border-slate-800 shadow-2xl rounded-t-[2.5rem] md:hidden">
+    <button class="flex flex-col items-center justify-center bg-gradient-to-br from-[#2c50cd] to-[#496ae8] text-white rounded-full px-6 py-2 shadow-lg scale-110">
+      <span class="material-symbols-outlined mb-1">storage</span>
+      <span class="font-['Inter'] font-semibold text-[10px] uppercase tracking-widest">Storage</span>
+    </button>
+    <button class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 opacity-60 hover:opacity-100 transition-opacity active:scale-95 duration-150">
+      <span class="material-symbols-outlined mb-1">terminal</span>
+      <span class="font-['Inter'] font-semibold text-[10px] uppercase tracking-widest">Query</span>
+    </button>
+    <button class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 opacity-60 hover:opacity-100 transition-opacity active:scale-95 duration-150">
+      <span class="material-symbols-outlined mb-1">analytics</span>
+      <span class="font-['Inter'] font-semibold text-[10px] uppercase tracking-widest">AQP</span>
+    </button>
+  </nav>
+
+  <script>
+    const API = "http://localhost:3001";
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+    const $ = id => document.getElementById(id);
+    const show = id => $( id)?.classList.remove("hidden");
+    const hide = id => $( id)?.classList.add("hidden");
+    const flex = id => { const el=$(id); if(el){el.classList.remove("hidden"); el.classList.add("flex");} };
+    const grid = id => { const el=$(id); if(el){el.classList.remove("hidden"); el.classList.add("grid");} };
+    const setText = (id, v) => { const el=$(id); if(el) el.textContent=v; };
+
+    function fmt(v) {
+      if (v === null || v === undefined) return "—";
+      if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(4);
+      if (Array.isArray(v)) return v.map(r => Object.entries(r).map(([k,val]) => `${k}: ${val}`).join(", ")).join(" | ");
+      return String(v);
+    }
+
+    function speedupLabel(aqeMs, sqMs) {
+      if (!aqeMs || !sqMs) return "—";
+      return aqeMs < sqMs
+        ? `⚡ ${(sqMs/aqeMs).toFixed(1)}×`
+        : `${(aqeMs/sqMs).toFixed(1)}× slower`;
+    }
+
+    // -----------------------------------------------------------------------
+    // Init buttons
+    // -----------------------------------------------------------------------
+    async function initAction(endpoint, label) {
+      setText("init-spinner-label", label + "…");
+      flex("init-spinner");
+      setText("init-status", "");
+      const log = $("init-log");
+      if (log) { log.textContent = ""; show("init-log"); }
+      try {
+        const res = await fetch(`${API}${endpoint}`, { method: "POST" });
+        const data = await res.json();
+        if (log) log.textContent = JSON.stringify(data, null, 2);
+        setText("init-status", res.ok ? `✓ ${label} done` : `✗ ${data.detail}`);
+      } catch(e) {
+        setText("init-status", "✗ " + e.message);
+        if (log) log.textContent = e.message;
+      } finally {
+        hide("init-spinner");
+      }
+    }
+
+    $("btn-gen-dataset")?.addEventListener("click", () => initAction("/api/init/dataset", "Generating dataset"));
+    $("btn-init-sqlite")?.addEventListener("click", () => initAction("/api/init/sqlite",  "Building SQLite"));
+    $("btn-init-aqe")?.addEventListener("click",    () => initAction("/api/init/aqe",     "Loading AQE"));
+
+    // -----------------------------------------------------------------------
+    // Benchmark query dropdown — populated from /api/benchmark/queries
+    // -----------------------------------------------------------------------
+    let allBenchRows = [];
+    let activeCat = null;
+
+    fetch(`${API}/api/benchmark/queries`)
+      .then(r => r.json())
+      .then(({ queries, categories }) => {
+        const sel = $("bench-select");
+        if (!sel) return;
+
+        // Group by category
+        const bycat = {};
+        queries.forEach(q => { (bycat[q.category] = bycat[q.category]||[]).push(q); });
+        categories.forEach(cat => {
+          const grp = document.createElement("optgroup");
+          grp.label = cat.replace(/_/g, " ").toUpperCase();
+          (bycat[cat] || []).forEach(q => {
+            const opt = document.createElement("option");
+            opt.value = q.sql;
+            opt.textContent = q.label;
+            grp.appendChild(opt);
+          });
+          sel.appendChild(grp);
+        });
+
+        sel.addEventListener("change", () => {
+          if (sel.value) $("sql-input").value = sel.value;
+        });
+
+        // Category filter pills
+        const pills = $("cat-pills");
+        if (pills) {
+          categories.forEach(cat => {
+            const btn = document.createElement("button");
+            btn.textContent = cat.replace(/_/g, " ");
+            btn.dataset.cat = cat;
+            btn.className = "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest neu-pressed bg-surface-container-low text-slate-500 active:scale-95 transition-all";
+            btn.addEventListener("click", () => {
+              activeCat = activeCat === cat ? null : cat;
+              document.querySelectorAll("#cat-pills button").forEach(b => {
+                b.className = b.dataset.cat === activeCat
+                  ? "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest bg-primary text-white shadow active:scale-95 transition-all"
+                  : "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest neu-pressed bg-surface-container-low text-slate-500 active:scale-95 transition-all";
+              });
+              renderBenchTable(allBenchRows);
+            });
+            pills.appendChild(btn);
+          });
+        }
+      })
+      .catch(() => {});
+
+    // -----------------------------------------------------------------------
+    // Render benchmark results table
+    // -----------------------------------------------------------------------
+    function renderBenchTable(rows) {
+      allBenchRows = rows;
+      const tbody = $("bench-tbody");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      const filtered = activeCat ? rows.filter(r => r.category === activeCat) : rows;
+      filtered.forEach(d => {
+        const aqeMs  = d.aqe_ms  ?? d.aqe?.elapsed_ms  ?? 0;
+        const sqMs   = d.sqlite_ms ?? d.sqlite?.elapsed_ms ?? 0;
+        const aqeVal = d.aqe_result
+          ? (d.aqe_result.type === "scalar" ? fmt(d.aqe_result.value) : d.aqe_result.type === "groups" ? "[groups]" : "—")
+          : "—";
+        const spd    = d.speedup != null ? d.speedup.toFixed(2) + "×" : speedupLabel(aqeMs, sqMs);
+        const fast   = aqeMs > 0 && sqMs > 0 && aqeMs < sqMs;
+        const strategy = d.strategy ?? d.aqe_result?.storage_path ?? "";
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-white/10 transition-colors cursor-pointer";
+        tr.innerHTML = `
+          <td class="px-4 py-3 font-medium text-on-surface text-xs">${d.label}</td>
+          <td class="px-4 py-3 text-xs text-slate-400 hidden md:table-cell">${(d.category||"").replace(/_/g," ")}</td>
+          <td class="px-4 py-3 text-right font-mono text-primary text-xs">${aqeMs} ms</td>
+          <td class="px-4 py-3 text-right text-on-surface-variant text-xs">${sqMs} ms</td>
+          <td class="px-4 py-3 text-right font-bold text-xs ${fast ? 'text-primary' : 'text-slate-400'}">${spd}</td>
+          <td class="px-4 py-3 text-right text-xs text-slate-400 hidden md:table-cell">${strategy}</td>
+        `;
+        tr.addEventListener("click", () => {
+          $("sql-input").value = d.sql;
+          document.querySelector("#benchmark").scrollIntoView({ behavior: "smooth" });
+        });
+        tbody.appendChild(tr);
+      });
+      setText("bench-table-label", `${filtered.length} queries${activeCat ? " — " + activeCat.replace(/_/g," ") : ""}`);
+      show("bench-table-wrap");
+    }
+
+    // -----------------------------------------------------------------------
+    // Single query runner
+    // -----------------------------------------------------------------------
+    function renderSingleResult(data) {
+      const aqe = data.aqe;
+      const sq  = data.sqlite;
+      const aqeVal = aqe.type === "scalar" ? aqe.value : aqe.type === "groups" ? aqe.groups : aqe.error ?? "—";
+      setText("aqe-result",     fmt(aqeVal));
+      setText("aqe-time",       (aqe.elapsed_ms ?? 0) + " ms");
+      setText("aqe-rows",       typeof aqe.rows_scanned === "number" ? aqe.rows_scanned.toLocaleString() : "—");
+      setText("aqe-confidence", aqe.confidence ?? "");
+      setText("sqlite-result",  fmt(sq.result ?? sq.error));
+      setText("sqlite-time",    (sq.elapsed_ms ?? 0) + " ms");
+
+      grid("lab-results");
+
+      const aqeMs = aqe.elapsed_ms ?? 0;
+      const sqMs  = sq.elapsed_ms  ?? 0;
+      const badge = $("speedup-text");
+      if (badge && aqeMs > 0 && sqMs > 0) {
+        if (aqeMs < sqMs) {
+          badge.textContent = `⚡ AQE was ${(sqMs/aqeMs).toFixed(1)}× faster`;
+          badge.className = "px-6 py-2 rounded-full font-bold text-sm shadow-md bg-primary text-white";
+        } else {
+          badge.textContent = `SQLite was ${(aqeMs/sqMs).toFixed(1)}× faster`;
+          badge.className = "px-6 py-2 rounded-full font-bold text-sm shadow-md bg-surface-container-high text-on-surface";
+        }
+        flex("speedup-badge");
+      }
+
+      const warns = aqe.warnings ?? [];
+      const warnEl = $("aqe-warnings");
+      if (warnEl) {
+        warnEl.textContent = warns.join(" · ");
+        warns.length ? show("aqe-warnings") : hide("aqe-warnings");
+      }
+    }
+
+    async function runSql(sql) {
+      hide("lab-results");
+      hide("speedup-badge");
+      hide("bench-table-wrap");
+      flex("lab-loading");
+      try {
+        const res = await fetch(`${API}/api/query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sql }),
+        });
+        renderSingleResult(await res.json());
+      } catch (e) {
+        setText("aqe-result", "Error: " + e.message);
+        grid("lab-results");
+      } finally {
+        hide("lab-loading");
+      }
+    }
+
+    $("run-btn")?.addEventListener("click", () => {
+      const sql = $("sql-input")?.value?.trim();
+      if (sql) runSql(sql);
+    });
+    $("sql-input")?.addEventListener("keydown", e => {
+      if (e.key === "Enter") { const sql = e.target.value.trim(); if (sql) runSql(sql); }
+    });
+
+    // -----------------------------------------------------------------------
+    // Run All — live stream from /api/benchmark/run-all
+    // -----------------------------------------------------------------------
+    $("run-all-btn")?.addEventListener("click", async () => {
+      hide("lab-results");
+      hide("speedup-badge");
+      allBenchRows = [];
+      renderBenchTable([]);
+      flex("lab-loading");
+      setText("lab-loading", ""); // clear
+      const lbl = $("lab-loading");
+      if (lbl) lbl.innerHTML = '<span class="material-symbols-outlined animate-spin text-primary">autorenew</span> Running all 19 queries…';
+
+      try {
+        const res = await fetch(`${API}/api/benchmark/run-all`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        const rows = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const d = JSON.parse(line);
+              rows.push(d);
+              renderBenchTable(rows);
+            } catch {}
+          }
+        }
+      } catch (e) {
+        const tbody = $("bench-tbody");
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-4 text-red-500">Error: ${e.message}</td></tr>`;
+        show("bench-table-wrap");
+      } finally {
+        hide("lab-loading");
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Load Cached — from /api/benchmark/cached
+    // -----------------------------------------------------------------------
+    $("load-cached-btn")?.addEventListener("click", async () => {
+      hide("lab-results");
+      hide("speedup-badge");
+      flex("lab-loading");
+      try {
+        const res = await fetch(`${API}/api/benchmark/cached`);
+        if (!res.ok) throw new Error((await res.json()).detail);
+        const { rows } = await res.json();
+        renderBenchTable(rows);
+      } catch (e) {
+        const tbody = $("bench-tbody");
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-4 text-red-500">${e.message}</td></tr>`;
+        show("bench-table-wrap");
+      } finally {
+        hide("lab-loading");
+      }
+    });
+    // -----------------------------------------------------------------------
+    // Tab switching
+    // -----------------------------------------------------------------------
+    const TABS = ["overview", "benchmark", "live", "advanced", "docs"];
+
+    function switchTab(name) {
+      TABS.forEach(t => {
+        const sec = $(`tab-${t}`);
+        if (sec) sec.classList.toggle("hidden", t !== name);
+      });
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        const active = btn.dataset.tab === name;
+        btn.className = active
+          ? "tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all bg-black text-white shadow-md"
+          : "tab-btn px-4 py-1 rounded-full text-sm font-bold font-['Space_Grotesk'] tracking-tight transition-all text-slate-400 hover:text-on-surface";
+      });
+      if (name === "advanced") loadAdvancedConfig();
+    }
+
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+
+    // -----------------------------------------------------------------------
+    // Config facade (Overview tab sliders)
+    // -----------------------------------------------------------------------
+    const FACADE_FIELDS = [
+      { id: "facade-accuracy", key: "accuracy_target", valId: "facade-accuracy-val", parse: parseFloat },
+      { id: "facade-k",        key: "k",               valId: "facade-k-val",        parse: parseFloat },
+      { id: "facade-memrows",  key: "memtable_row_limit", valId: "facade-memrows-val", parse: parseInt },
+    ];
+
+    FACADE_FIELDS.forEach(({ id, valId }) => {
+      const el = $(id);
+      if (el) el.addEventListener("input", () => setText(valId, el.value));
+    });
+
+    // Load current values into facade sliders on page load
+    fetch(`${API}/api/config`)
+      .then(r => r.json())
+      .then(cfg => {
+        FACADE_FIELDS.forEach(({ id, valId, key }) => {
+          const el = $(id);
+          if (el && cfg[key] !== undefined) { el.value = cfg[key]; setText(valId, cfg[key]); }
+        });
+      })
+      .catch(() => {});
+
+    $("facade-apply-btn")?.addEventListener("click", async () => {
+      const params = {};
+      FACADE_FIELDS.forEach(({ id, key, parse }) => {
+        const el = $(id);
+        if (el) params[key] = parse(el.value);
+      });
+      setText("facade-status", "Saving…");
+      try {
+        const res = await fetch(`${API}/api/config`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ params }),
+        });
+        const data = await res.json();
+        setText("facade-status", res.ok ? "✓ Saved" : "✗ " + (data.detail ?? "error"));
+      } catch (e) {
+        setText("facade-status", "✗ " + e.message);
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Advanced config grid
+    // -----------------------------------------------------------------------
+    const PARAM_META = {
+      accuracy_target:          { type: "float",  min: 0.1,     max: 1.0,          step: 0.01,     label: "Accuracy Target" },
+      aqp_mode:                 { type: "select", options: ["fast","balanced","precise"],            label: "AQP Mode" },
+      k:                        { type: "float",  min: 0.5,     max: 10.0,         step: 0.5,      label: "Confidence k" },
+      seed:                     { type: "int",    min: 0,       max: 999999,       step: 1,        label: "Random Seed" },
+      memtable_row_limit:       { type: "int",    min: 1000,    max: 5000000,      step: 1000,     label: "Memtable Row Limit" },
+      memtable_size_limit:      { type: "int",    min: 1048576, max: 1073741824,   step: 1048576,  label: "Memtable Size Limit (bytes)" },
+      min_group_rows:           { type: "int",    min: 1,       max: 10000,        step: 1,        label: "Min Group Rows" },
+      low_confidence_threshold: { type: "int",    min: 1,       max: 10000,        step: 1,        label: "Low Confidence Threshold" },
+      verify_crc:               { type: "bool",                                                     label: "Verify CRC" },
+      compaction_strategy:      { type: "select", options: ["stcs","lcs"],                          label: "Compaction Strategy" },
+      compaction_interval_secs: { type: "int",    min: 5,       max: 3600,         step: 5,        label: "Compaction Interval (s)" },
+      min_compaction_files:     { type: "int",    min: 2,       max: 20,           step: 1,        label: "Min Compaction Files" },
+      row_group_size:           { type: "int",    min: 64,      max: 65536,        step: 64,       label: "Row Group Size" },
+      lcs_l1_max_bytes:         { type: "int",    min: 1048576, max: 1073741824,   step: 1048576,  label: "LCS L1 Max (bytes)" },
+      lcs_l2_max_bytes:         { type: "int",    min: 1048576, max: 10737418240,  step: 1048576,  label: "LCS L2 Max (bytes)" },
+      max_segment_rows:         { type: "int",    min: 10000,   max: 10000000,     step: 10000,    label: "Max Segment Rows" },
+    };
+
+    let advLoaded = false;
+
+    function buildInput(key, meta, value) {
+      const wrap = document.createElement("div");
+      wrap.className = "neu-pressed rounded-lg p-4 bg-surface-container-low flex flex-col gap-2";
+      const lbl = document.createElement("div");
+      lbl.className = "flex justify-between items-center";
+      lbl.innerHTML = `<span class="text-sm font-medium text-on-surface-variant">${meta.label}</span><span class="text-[10px] text-slate-400 font-mono uppercase">${key}</span>`;
+      wrap.appendChild(lbl);
+
+      let input;
+      if (meta.type === "bool") {
+        input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !!value;
+        input.id = `adv-${key}`;
+        input.className = "w-5 h-5 accent-primary cursor-pointer mt-1";
+      } else if (meta.type === "select") {
+        input = document.createElement("select");
+        input.id = `adv-${key}`;
+        input.className = "bg-transparent text-sm font-medium text-on-surface outline-none cursor-pointer mt-1 py-1";
+        meta.options.forEach(opt => {
+          const o = document.createElement("option");
+          o.value = opt; o.textContent = opt;
+          if (opt === value) o.selected = true;
+          input.appendChild(o);
+        });
+      } else {
+        input = document.createElement("input");
+        input.type = "number";
+        input.id = `adv-${key}`;
+        input.value = value;
+        input.min = meta.min; input.max = meta.max; input.step = meta.step;
+        input.className = "bg-transparent text-sm font-mono text-on-surface outline-none mt-1 py-1 w-full";
+      }
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    async function loadAdvancedConfig() {
+      if (advLoaded) return;
+      const grid = $("adv-grid");
+      if (!grid) return;
+      try {
+        const cfg = await fetch(`${API}/api/config`).then(r => r.json());
+        grid.innerHTML = "";
+        Object.entries(PARAM_META).forEach(([key, meta]) => {
+          if (cfg[key] !== undefined) grid.appendChild(buildInput(key, meta, cfg[key]));
+        });
+        advLoaded = true;
+      } catch (e) {
+        grid.innerHTML = `<div class="text-red-500 text-sm col-span-2">Failed to load config: ${e.message}</div>`;
+      }
+    }
+
+    $("adv-save-btn")?.addEventListener("click", async () => {
+      const params = {};
+      Object.entries(PARAM_META).forEach(([key, meta]) => {
+        const el = document.getElementById(`adv-${key}`);
+        if (!el) return;
+        if (meta.type === "bool")   params[key] = el.checked;
+        else if (meta.type === "select") params[key] = el.value;
+        else if (meta.type === "float")  params[key] = parseFloat(el.value);
+        else params[key] = parseInt(el.value, 10);
+      });
+      setText("adv-status", "Saving…");
+      try {
+        const res = await fetch(`${API}/api/config`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ params }),
+        });
+        const data = await res.json();
+        setText("adv-status", res.ok ? "✓ Saved — engine will use new config on next query" : "✗ " + (data.detail ?? "error"));
+      } catch (e) {
+        setText("adv-status", "✗ " + e.message);
+      }
+    });
+
+    $("adv-reload-btn")?.addEventListener("click", () => {
+      advLoaded = false;
+      loadAdvancedConfig();
+    });
+
+    // -----------------------------------------------------------------------
+    // Live Ingestion — query runner
+    // -----------------------------------------------------------------------
+
+    // Sync dropdown → input
+    $("live-query-select")?.addEventListener("change", e => {
+      if (e.target.value !== "custom") $("live-sql-input").value = e.target.value;
+    });
+    // Pre-fill input with first option
+    const liveSel = $("live-query-select");
+    if (liveSel && liveSel.value !== "custom") $("live-sql-input").value = liveSel.value;
+
+    async function runLiveQuery() {
+      const sql = $("live-sql-input")?.value?.trim();
+      if (!sql) return;
+      const btn = $("live-run-btn");
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sql }),
+        });
+        const data = await res.json();
+        const aqe = data.aqe;
+        const qr = $("live-query-result");
+        if (!qr) return;
+
+        // groups vs scalar
+        const grpWrap = $("live-qr-groups");
+        if (aqe.type === "groups" && aqe.groups?.length) {
+          setText("live-qr-value", `${aqe.groups.length} groups`);
+          const tbody = $("live-qr-groups-tbody");
+          if (tbody) tbody.innerHTML = aqe.groups.map(g => `
+            <tr class="hover:bg-white/10 transition-colors">
+              <td class="px-3 py-2">${g.key}</td>
+              <td class="px-3 py-2 text-right text-primary font-bold">${fmt(g.value)}</td>
+              <td class="px-3 py-2 text-right text-slate-400">${g.confidence}</td>
+            </tr>`).join("");
+          grpWrap?.classList.remove("hidden");
+        } else {
+          setText("live-qr-value", fmt(aqe.type === "scalar" ? aqe.value : aqe.error ?? "—"));
+          grpWrap?.classList.add("hidden");
+        }
+
+        setText("live-qr-confidence", aqe.confidence ?? "");
+        setText("live-qr-time",       `${aqe.elapsed_ms ?? 0} ms`);
+        setText("live-qr-rows",       typeof aqe.rows_scanned === "number" ? `${aqe.rows_scanned.toLocaleString()} rows scanned` : "");
+        setText("live-qr-path",       aqe.storage_path ? `path: ${aqe.storage_path}` : "");
+
+        const warns = aqe.warnings ?? [];
+        const warnEl = $("live-qr-warnings");
+        if (warnEl) { warnEl.textContent = warns.join(" · "); warns.length ? show("live-qr-warnings") : hide("live-qr-warnings"); }
+
+        show("live-query-result");
+      } catch (e) {
+        setText("live-qr-value", "Error: " + e.message);
+        show("live-query-result");
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    $("live-run-btn")?.addEventListener("click", runLiveQuery);
+    $("live-sql-input")?.addEventListener("keydown", e => { if (e.key === "Enter") runLiveQuery(); });
+
+    // -----------------------------------------------------------------------
+    // Live Ingestion — status poller
+    // -----------------------------------------------------------------------
+    let liveInterval = null;
+
+    async function pollLive() {
+      try {
+        const [st, sm] = await Promise.all([
+          fetch(`${API}/api/live/status`).then(r => r.json()),
+          fetch(`${API}/api/live/sample?n=10`).then(r => r.json()),
+        ]);
+        setText("live-rate",      st.rows_per_sec + " r/s");
+        setText("live-total",     st.total_inserted.toLocaleString());
+        setText("live-reservoir", sm.rows.length);
+        const badge = $("live-badge");
+        if (badge) {
+          badge.textContent = st.running ? "Live" : "Idle";
+          badge.className = st.running
+            ? "ml-2 px-3 py-0.5 rounded-full bg-primary text-white text-xs font-bold tracking-widest uppercase"
+            : "ml-2 px-3 py-0.5 rounded-full bg-surface-container-high text-slate-500 text-xs font-bold tracking-widest uppercase";
+        }
+        const tbody = $("live-tbody");
+        if (tbody && sm.rows.length) {
+          tbody.innerHTML = sm.rows.slice(0, 10).map(r => `
+            <tr class="hover:bg-white/10 transition-colors">
+              <td class="px-4 py-2 text-right">${r.user_id ?? "—"}</td>
+              <td class="px-4 py-2 text-right">${r.status ?? "—"}</td>
+              <td class="px-4 py-2 text-right">${r.country ?? "—"}</td>
+              <td class="px-4 py-2 text-right">${r.timestamp ?? "—"}</td>
+              <td class="px-4 py-2 text-right text-primary">${r.level ?? "—"}</td>
+            </tr>`).join("");
+        }
+      } catch {}
+    }
+
+    $("live-start-btn")?.addEventListener("click", async () => {
+      await fetch(`${API}/api/live/start`, { method: "POST" });
+      if (!liveInterval) liveInterval = setInterval(pollLive, 500);
+      pollLive();
+    });
+
+    $("live-stop-btn")?.addEventListener("click", async () => {
+      await fetch(`${API}/api/live/stop`, { method: "POST" });
+      clearInterval(liveInterval);
+      liveInterval = null;
+      pollLive();
+    });
+  </script>
+
+  <!-- Footer -->
+  <footer class="w-full flex flex-col md:flex-row justify-between items-center px-12 py-8 mb-24 opacity-60 bg-transparent">
+    <div class="font-['Inter'] text-[11px] font-medium tracking-tight text-slate-400 dark:text-slate-500">
+      Rust 2024 | AQE Engine v0.1.0
+    </div>
+    <div class="flex gap-8 mt-4 md:mt-0">
+      <a class="text-slate-400 dark:text-slate-600 font-['Inter'] text-[11px] font-medium tracking-tight hover:text-[#2c50cd] transition-colors" href="#">System Health</a>
+      <a class="text-slate-400 dark:text-slate-600 font-['Inter'] text-[11px] font-medium tracking-tight hover:text-[#2c50cd] transition-colors" href="#">Documentation</a>
+      <a class="text-slate-400 dark:text-slate-600 font-['Inter'] text-[11px] font-medium tracking-tight hover:text-[#2c50cd] transition-colors" href="#">Metrics</a>
+    </div>
+  </footer>

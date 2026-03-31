@@ -1,0 +1,103 @@
+---
+const { title = "AQE Dashboard | Precision Engine" } = Astro.props;
+import "../styles/global.css";
+---
+
+<!DOCTYPE html>
+<html lang="en" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container-low": "#eff4fb",
+              "on-primary": "#ffffff",
+              "surface-container-high": "#e4e9f0",
+              "tertiary-fixed": "#ffdcc3",
+              "inverse-surface": "#2b3136",
+              "tertiary-fixed-dim": "#ffb77d",
+              "surface-container": "#e9eef5",
+              "secondary": "#515c8d",
+              "on-secondary-fixed": "#0a1745",
+              "on-secondary": "#ffffff",
+              "surface-bright": "#f6f9ff",
+              "background": "#f6f9ff",
+              "surface-container-lowest": "#ffffff",
+              "on-error": "#ffffff",
+              "on-tertiary": "#ffffff",
+              "tertiary": "#8d4b00",
+              "inverse-on-surface": "#ecf1f8",
+              "secondary-fixed": "#dde1ff",
+              "on-surface": "#171c21",
+              "outline": "#747685",
+              "outline-variant": "#c4c5d6",
+              "on-tertiary-container": "#fffbff",
+              "on-background": "#171c21",
+              "secondary-fixed-dim": "#b9c4fb",
+              "on-error-container": "#93000a",
+              "secondary-container": "#bcc7fe",
+              "primary-fixed": "#dde1ff",
+              "on-surface-variant": "#444654",
+              "on-primary-fixed": "#001453",
+              "primary-fixed-dim": "#b8c4ff",
+              "on-secondary-fixed-variant": "#394473",
+              "error": "#ba1a1a",
+              "on-primary-container": "#fffbff",
+              "primary": "#2c50cd",
+              "tertiary-container": "#b16000",
+              "surface-dim": "#d5dae1",
+              "error-container": "#ffdad6",
+              "surface-container-highest": "#dee3ea",
+              "surface": "#f6f9ff",
+              "on-tertiary-fixed": "#2f1500",
+              "on-secondary-container": "#465282",
+              "on-primary-fixed-variant": "#0337b8",
+              "inverse-primary": "#b8c4ff",
+              "primary-container": "#496ae8",
+              "surface-variant": "#dee3ea",
+              "on-tertiary-fixed-variant": "#6e3900",
+              "surface-tint": "#2f52d0"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+    <style>
+      .neu-surface {
+        box-shadow: 10px 10px 20px #a3b1c6, -10px -10px 20px #ffffff;
+      }
+      .neu-pressed {
+        box-shadow: inset 6px 6px 12px #a3b1c6, inset -6px -6px 12px #ffffff;
+      }
+      .glass-header {
+        background: rgba(246, 249, 255, 0.6);
+        backdrop-filter: blur(20px);
+      }
+      .text-glow {
+        text-shadow: 0 0 15px rgba(44, 80, 205, 0.3);
+      }
+    </style>
+    <style>
+      body {
+        min-height: max(884px, 100dvh);
+      }
+    </style>
+  </head>
+  <body class="bg-background text-on-background font-body min-h-screen">
+    <slot />
+  </body>
+</html>
