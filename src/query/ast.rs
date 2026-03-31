@@ -5,6 +5,7 @@ pub enum Aggregation {
     Count,
     Sum(String),
     Avg(String),
+    ApproxPercentile(String, f64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +92,8 @@ pub struct QueryPlan {
     pub table: String,
     pub filter: Option<PredicateExpr>,
     pub group_by: Option<String>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 impl QueryPlan {
@@ -98,7 +101,9 @@ impl QueryPlan {
         let mut cols = Vec::new();
         match &self.aggregation {
             Aggregation::Count => {}
-            Aggregation::Sum(c) | Aggregation::Avg(c) => cols.push(c.clone()),
+            Aggregation::Sum(c)
+            | Aggregation::Avg(c)
+            | Aggregation::ApproxPercentile(c, _) => cols.push(c.clone()),
         }
         if let Some(filter) = &self.filter {
             filter.collect_columns(&mut cols);
