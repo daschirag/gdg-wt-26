@@ -87,6 +87,7 @@ impl SSTableWriter {
             max_ts: if max_ts == i64::MIN { 0 } else { max_ts },
             schema_version: rows.first().map(|r| r.version).unwrap_or(1),
             columns: column_metadata,
+            artifacts: Vec::new(),
             checksum: 0,
         };
 
