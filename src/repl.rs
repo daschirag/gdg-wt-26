@@ -18,6 +18,9 @@ pub fn start_repl(config: Arc<Config>, storage: Arc<StorageManager>) -> Result<(
     println!("AQE Interactive REPL");
     println!("Type 'help' for commands, 'exit' to quit.");
 
+    // Session-level AQP mode override: None means use config default.
+    let mut aqp_mode: Option<String> = None;
+
     loop {
         let readline = rl.readline("aqe> ");
         match readline {
@@ -41,6 +44,33 @@ pub fn start_repl(config: Arc<Config>, storage: Arc<StorageManager>) -> Result<(
                     "compact" => {
                         handle_compact(&storage);
                     }
+                    // SET AQP MODE <fast|balanced|accurate|off>
+                    "set" => {
+                        let rest: Vec<&str> = parts[1..].iter().map(|s| s.to_owned()).collect();
+                        if rest.len() >= 3
+                            && rest[0].to_ascii_lowercase() == "aqp"
+                            && rest[1].to_ascii_lowercase() == "mode"
+                        {
+                            match rest[2].to_ascii_lowercase().as_str() {
+                                "off" => {
+                                    aqp_mode = None;
+                                    println!("AQP disabled (using exact execution).");
+                                }
+                                m @ ("fast" | "balanced" | "accurate") => {
+                                    aqp_mode = Some(m.to_string());
+                                    println!("AQP mode set to '{}'.", m);
+                                }
+                                other => {
+                                    println!(
+                                        "Unknown AQP mode '{}'. Use: fast, balanced, accurate, off.",
+                                        other
+                                    );
+                                }
+                            }
+                        } else {
+                            println!("Usage: SET AQP MODE <fast|balanced|accurate|off>");
+                        }
+                    }
                     "query" => {
                         // Extract query between quotes or the rest of the line
                         let query_str = if line.contains('"') {
@@ -51,7 +81,9 @@ pub fn start_repl(config: Arc<Config>, storage: Arc<StorageManager>) -> Result<(
                         if query_str.is_empty() {
                             println!("Error: Missing query string. Use: query \"SELECT ...\"");
                         } else {
-                            if let Err(e) = handle_query(query_str, &config, &storage) {
+                            if let Err(e) =
+                                handle_query(query_str, &config, &storage, aqp_mode.as_deref())
+                            {
                                 println!("Query Error: {:?}", e);
                             }
                         }
@@ -82,11 +114,13 @@ pub fn start_repl(config: Arc<Config>, storage: Arc<StorageManager>) -> Result<(
 
 fn print_help() {
     println!("Available commands:");
-    println!("  gen <num>      - Generate <num> synthetic rows and flush to SSTables");
-    println!("  compact        - Manually trigger background compaction");
-    println!("  query \"<sql>\"  - Execute an approximate SQL query");
-    println!("  help           - Show this help message");
-    println!("  exit / quit    - Exit the REPL");
+    println!("  gen <num>                        - Generate <num> synthetic rows and flush to SSTables");
+    println!("  compact                          - Manually trigger background compaction");
+    println!("  query \"<sql>\"                  - Execute an approximate SQL query");
+    println!("  set aqp mode <fast|balanced|     - Enable AQP with specified accuracy mode");
+    println!("               accurate|off>         (off = disable AQP, use exact execution)");
+    println!("  help                             - Show this help message");
+    println!("  exit / quit                      - Exit the REPL");
 }
 
 fn handle_compact(storage: &StorageManager) {
@@ -144,15 +178,30 @@ fn handle_query(
     sql: &str,
     config: &Config,
     storage: &StorageManager,
+    repl_aqp_mode: Option<&str>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut sstables = Vec::new();
     for i in 0..10 {
         sstables.push(format!("data/sstable_{}.aqe", i));
     }
 
+    // Build an effective config: if the user set an AQP mode in the REPL, override it.
+    let effective_config;
+    let config = if let Some(mode) = repl_aqp_mode {
+        effective_config = Config { aqp_mode: mode.to_string(), ..config.clone() };
+        &effective_config
+    } else {
+        config
+    };
+
     match Parser::parse(sql) {
         Ok(plan) => {
             let execution_path = crate::query::planner::QueryPlanner::plan(&plan, storage);
+            let aqp_enabled = repl_aqp_mode.is_some()
+                || matches!(
+                    plan.aggregation,
+                    crate::query::ast::Aggregation::ApproxPercentile(_, _)
+                );
 
             let start = Instant::now();
 
@@ -209,7 +258,8 @@ fn handle_query(
                         crate::query::ast::Aggregation::Sum(_) => {
                             crate::types::AggregateValue::Scalar(total_sum)
                         }
-                        crate::query::ast::Aggregation::Avg(_) => {
+                        crate::query::ast::Aggregation::Avg(_)
+                        | crate::query::ast::Aggregation::ApproxPercentile(_, _) => {
                             if total_count > 0 {
                                 crate::types::AggregateValue::Scalar(total_sum / total_count as f64)
                             } else {
@@ -227,6 +277,8 @@ fn handle_query(
                         sampling_rate: 1.0,
                         estimated_variance: 0.0,
                         profile: crate::types::QueryProfile::default(),
+                        aqp: None,
+                        next_offset: None,
                     })
                 }
                 crate::query::planner::ExecutionPath::Row { sstables } => {
@@ -237,9 +289,20 @@ fn handle_query(
                     segments,
                     columns_needed,
                 } => {
-                    let pipeline =
-                        crate::query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
-                    pipeline.execute(&plan, &columns_needed, config, mask, skip_dedup)
+                    if aqp_enabled
+                        && crate::query::executor::aqp_pipeline::AqpPipeline::supports_plan(&plan)
+                        && crate::query::executor::aqp_pipeline::group_by_is_low_cardinality(
+                            &segments, &plan,
+                        )?
+                    {
+                        let pipeline =
+                            crate::query::executor::aqp_pipeline::AqpPipeline::new(segments);
+                        pipeline.execute(&plan, config, mask, skip_dedup)
+                    } else {
+                        let pipeline =
+                            crate::query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
+                        pipeline.execute(&plan, &columns_needed, config, mask, skip_dedup)
+                    }
                 }
                 crate::query::planner::ExecutionPath::Mixed {
                     sstables,
@@ -247,56 +310,32 @@ fn handle_query(
                     columns_needed,
                 } => {
                     let row_pipeline = Pipeline::new(sstables);
-                    let col_pipeline =
-                        crate::query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
-
                     let res_row = row_pipeline.execute(&plan, config, mask, skip_dedup)?;
-                    let res_col =
-                        col_pipeline.execute(&plan, &columns_needed, config, mask, skip_dedup)?;
 
-                    // Simple merge for Scalar (identical to main.rs)
-                    let merged_value = match (&res_row.value, &res_col.value) {
-                        (
-                            crate::types::AggregateValue::Scalar(s1),
-                            crate::types::AggregateValue::Scalar(s2),
-                        ) => match &plan.aggregation {
-                            crate::query::ast::Aggregation::Avg(_) => {
-                                let total_scanned = res_row.rows_scanned + res_col.rows_scanned;
-                                if total_scanned > 0 {
-                                    crate::types::AggregateValue::Scalar(
-                                        (s1 * res_row.rows_scanned as f64
-                                            + s2 * res_col.rows_scanned as f64)
-                                            / total_scanned as f64,
-                                    )
-                                } else {
-                                    crate::types::AggregateValue::Empty
-                                }
-                            }
-                            _ => crate::types::AggregateValue::Scalar(s1 + s2),
-                        },
-                        (
-                            crate::types::AggregateValue::Scalar(s),
-                            crate::types::AggregateValue::Empty,
-                        )
-                        | (
-                            crate::types::AggregateValue::Empty,
-                            crate::types::AggregateValue::Scalar(s),
-                        ) => crate::types::AggregateValue::Scalar(*s),
-                        _ => res_row.value.clone(),
-                    };
-
-                    let merged_confidence = if res_row.confidence
-                        == crate::types::ConfidenceFlag::Low
-                        || res_col.confidence == crate::types::ConfidenceFlag::Low
+                    let res_col = if aqp_enabled
+                        && crate::query::executor::aqp_pipeline::AqpPipeline::supports_plan(&plan)
+                        && crate::query::executor::aqp_pipeline::group_by_is_low_cardinality(
+                            &segments, &plan,
+                        )?
                     {
-                        crate::types::ConfidenceFlag::Low
-                    } else if res_row.confidence == crate::types::ConfidenceFlag::Exact
-                        && res_col.confidence == crate::types::ConfidenceFlag::Exact
-                    {
-                        crate::types::ConfidenceFlag::Exact
+                        let pipeline =
+                            crate::query::executor::aqp_pipeline::AqpPipeline::new(segments);
+                        pipeline.execute(&plan, config, mask, skip_dedup)?
                     } else {
-                        crate::types::ConfidenceFlag::High
+                        let pipeline =
+                            crate::query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
+                        pipeline.execute(&plan, &columns_needed, config, mask, skip_dedup)?
                     };
+
+                    let merged_value = merge_aggregate_values(
+                        &res_row.value,
+                        &res_col.value,
+                        &plan.aggregation,
+                        res_row.rows_scanned,
+                        res_col.rows_scanned,
+                    );
+                    let merged_confidence =
+                        merge_confidence(res_row.confidence, res_col.confidence);
 
                     Ok(crate::types::QueryResult {
                         value: merged_value,
@@ -307,6 +346,8 @@ fn handle_query(
                         sampling_rate: (res_row.sampling_rate + res_col.sampling_rate) / 2.0,
                         estimated_variance: 0.0,
                         profile: res_row.profile,
+                        aqp: res_col.aqp,
+                        next_offset: res_col.next_offset.or(res_row.next_offset),
                     })
                 }
             };
@@ -393,6 +434,16 @@ fn handle_query(
                     if !result.warnings.is_empty() {
                         println!("Warnings: {:?}", result.warnings);
                     }
+                    if let Some(aqp) = &result.aqp {
+                        println!(
+                            "AQP: mode={} source={} sample_rate={:.4} sample_rows={} error={:.4}",
+                            aqp.mode,
+                            aqp.source,
+                            aqp.sample_rate,
+                            aqp.sample_rows,
+                            aqp.estimated_error
+                        );
+                    }
                 }
                 Err(e) => println!("Query Execution Error: {:?}", e),
             }
@@ -400,4 +451,88 @@ fn handle_query(
         Err(e) => println!("SQL Parse Error: {:?}", e),
     }
     Ok(())
+}
+
+fn merge_aggregate_values(
+    a: &crate::types::AggregateValue,
+    b: &crate::types::AggregateValue,
+    aggregation: &crate::query::ast::Aggregation,
+    rows_a: u64,
+    rows_b: u64,
+) -> crate::types::AggregateValue {
+    use crate::types::AggregateValue;
+    use std::collections::HashMap;
+    match (a, b) {
+        (AggregateValue::Scalar(s1), AggregateValue::Scalar(s2)) => {
+            match aggregation {
+                crate::query::ast::Aggregation::Avg(_) => {
+                    let total = rows_a + rows_b;
+                    if total > 0 {
+                        AggregateValue::Scalar(
+                            (s1 * rows_a as f64 + s2 * rows_b as f64) / total as f64,
+                        )
+                    } else {
+                        AggregateValue::Empty
+                    }
+                }
+                _ => AggregateValue::Scalar(s1 + s2),
+            }
+        }
+        (AggregateValue::Scalar(s), AggregateValue::Empty)
+        | (AggregateValue::Empty, AggregateValue::Scalar(s)) => AggregateValue::Scalar(*s),
+        (AggregateValue::Empty, AggregateValue::Empty) => AggregateValue::Empty,
+        (AggregateValue::Groups(ga), AggregateValue::Groups(gb)) => {
+            let mut merged: HashMap<String, (f64, u64, crate::types::ConfidenceFlag)> =
+                HashMap::new();
+            for (k, v, c) in ga {
+                merged.insert(k.clone(), (*v, rows_a, *c));
+            }
+            for (k, v, c) in gb {
+                merged
+                    .entry(k.clone())
+                    .and_modify(|(existing_v, existing_rows, existing_c)| {
+                        *existing_v = match aggregation {
+                            crate::query::ast::Aggregation::Avg(_) => {
+                                let total = *existing_rows + rows_b;
+                                if total > 0 {
+                                    (*existing_v * *existing_rows as f64 + v * rows_b as f64)
+                                        / total as f64
+                                } else {
+                                    *existing_v
+                                }
+                            }
+                            _ => *existing_v + v,
+                        };
+                        *existing_rows += rows_b;
+                        *existing_c = merge_confidence(*existing_c, *c);
+                    })
+                    .or_insert((*v, rows_b, *c));
+            }
+            let mut groups: Vec<(String, f64, crate::types::ConfidenceFlag)> = merged
+                .into_iter()
+                .map(|(k, (v, _, c))| (k, v, c))
+                .collect();
+            groups.sort_by(|a, b| a.0.cmp(&b.0));
+            AggregateValue::Groups(groups)
+        }
+        (AggregateValue::Groups(g), AggregateValue::Empty)
+        | (AggregateValue::Empty, AggregateValue::Groups(g)) => {
+            AggregateValue::Groups(g.clone())
+        }
+        (AggregateValue::Groups(g), _) | (_, AggregateValue::Groups(g)) => {
+            AggregateValue::Groups(g.clone())
+        }
+    }
+}
+
+fn merge_confidence(
+    a: crate::types::ConfidenceFlag,
+    b: crate::types::ConfidenceFlag,
+) -> crate::types::ConfidenceFlag {
+    use crate::types::ConfidenceFlag;
+    match (a, b) {
+        (ConfidenceFlag::Low, _) | (_, ConfidenceFlag::Low) => ConfidenceFlag::Low,
+        (ConfidenceFlag::High, _) | (_, ConfidenceFlag::High) => ConfidenceFlag::High,
+        _ => ConfidenceFlag::Exact,
+    }
 }
