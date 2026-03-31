@@ -1,0 +1,22 @@
+# Storage-Aware Approximate Query Engine (AQE) Schema
+# This defines the column names and types for the RowDisk struct.
+
+[[columns]]
+name = "user_id"
+type = "u64"
+
+[[columns]]
+name = "status"
+type = "u8"
+
+[[columns]]
+name = "country"
+type = "u8"
+
+[[columns]]
+name = "timestamp"
+type = "u64"
+
+[[columns]]
+name = "level"
+type = "i64"

@@ -1,0 +1,30 @@
+# Extracted from bench/final_bench.py QUERY_MATRIX
+BENCH_QUERIES = [
+    ("COUNT_GLOBAL",              "metadata_fastpath", "SELECT COUNT(*) FROM logs"),
+    ("SUM_GLOBAL",                "metadata_fastpath", "SELECT SUM(level) FROM logs"),
+    ("AVG_GLOBAL",                "metadata_fastpath", "SELECT AVG(level) FROM logs"),
+    ("COUNT_STATUS_EQ_0",         "equality_filter",   "SELECT COUNT(*) FROM logs WHERE status = 0"),
+    ("SUM_COUNTRY_EQ_1",          "equality_filter",   "SELECT SUM(level) FROM logs WHERE country = 1"),
+    ("COUNT_LEVEL_GT_500",        "range_filter",      "SELECT COUNT(*) FROM logs WHERE level > 500"),
+    ("COUNT_LEVEL_LT_200",        "range_filter",      "SELECT COUNT(*) FROM logs WHERE level < 200"),
+    ("COUNT_TS_GE_2023",          "range_filter",      "SELECT COUNT(*) FROM logs WHERE timestamp >= 1672531200000"),
+    ("COUNT_BOOL_AND",            "boolean_filter",    "SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 1"),
+    ("COUNT_BOOL_OR",             "boolean_filter",    "SELECT COUNT(*) FROM logs WHERE level > 500 OR status = 2"),
+    ("COUNT_BOOL_NOT",            "boolean_filter",    "SELECT COUNT(*) FROM logs WHERE NOT status = 1 AND country = 2"),
+    ("COUNT_BOOL_PRECEDENCE",     "boolean_filter",    "SELECT COUNT(*) FROM logs WHERE status = 0 AND country = 1 AND level > 500"),
+    ("COUNT_GROUP_COUNTRY",       "group_by",          "SELECT COUNT(*) FROM logs GROUP BY country"),
+    ("COUNT_GROUP_STATUS",        "group_by",          "SELECT COUNT(*) FROM logs GROUP BY status"),
+    ("SUM_GROUP_COUNTRY",         "group_by",          "SELECT SUM(level) FROM logs GROUP BY country"),
+    ("AVG_GROUP_STATUS",          "group_by",          "SELECT AVG(level) FROM logs GROUP BY status"),
+    ("COUNT_STATUS0_GROUP_COUNTRY",   "filter_group_by", "SELECT COUNT(*) FROM logs WHERE status = 0 GROUP BY country"),
+    ("SUM_LEVEL_GT500_GROUP_STATUS",  "filter_group_by", "SELECT SUM(level) FROM logs WHERE level > 500 GROUP BY status"),
+    ("COUNT_BOOL_GROUP_COUNTRY",  "boolean_group_by",  "SELECT COUNT(*) FROM logs WHERE NOT status = 1 AND country = 2 GROUP BY country"),
+    ("COUNT_LEVEL_GT500_LIMIT100",   "paginated_range", "SELECT COUNT(*) FROM logs WHERE level > 500 LIMIT 100"),
+    ("COUNT_LEVEL_LT200_LIMIT50",    "paginated_range", "SELECT COUNT(*) FROM logs WHERE level < 200 LIMIT 50"),
+    ("COUNT_TS_GE2023_LIMIT200",     "paginated_range", "SELECT COUNT(*) FROM logs WHERE timestamp >= 1672531200000 LIMIT 200"),
+    ("COUNT_LEVEL_GT500_OFFSET100",  "paginated_range", "SELECT COUNT(*) FROM logs WHERE level > 500 LIMIT 100 OFFSET 100"),
+    ("COUNT_STATUS0_LIMIT500",       "paginated_range", "SELECT COUNT(*) FROM logs WHERE status = 0 LIMIT 500"),
+    ("SUM_LEVEL_GT500_LIMIT1000",    "paginated_range", "SELECT SUM(level) FROM logs WHERE level > 500 LIMIT 1000"),
+]
+
+CATEGORIES = sorted({cat for _, cat, _ in BENCH_QUERIES})
