@@ -25,7 +25,10 @@ impl Pipeline {
         let mut overall_profile = crate::types::QueryProfile::default();
 
         // 1. Metadata-Only Fast Path (for global COUNT/SUM/AVG without filters)
-        if plan.filter.is_none() && plan.group_by.is_none() {
+        if plan.filter.is_none()
+            && plan.group_by.is_none()
+            && !matches!(plan.aggregation, Aggregation::ApproxPercentile(_, _))
+        {
             let mut total_count = 0u64;
             let mut total_sum = 0.0;
             let mut possible = true;
@@ -47,6 +50,7 @@ impl Pipeline {
                                 break;
                             }
                         }
+                        Aggregation::ApproxPercentile(_, _) => unreachable!(),
                     }
                     continue;
                 }
@@ -71,6 +75,7 @@ impl Pipeline {
                                 break;
                             }
                         }
+                        Aggregation::ApproxPercentile(_, _) => unreachable!(),
                     }
                 } else {
                     possible = false;
@@ -89,6 +94,7 @@ impl Pipeline {
                             AggregateValue::Empty
                         }
                     }
+                    Aggregation::ApproxPercentile(_, _) => unreachable!(),
                 };
 
                 return Ok(QueryResult {
@@ -100,6 +106,8 @@ impl Pipeline {
                     storage_path: StoragePath::Row,
                     warnings: vec!["Metadata Fast-Path: Result is exact".to_string()],
                     profile: overall_profile,
+                    aqp: None,
+                    next_offset: None,
                 });
             }
         }
@@ -163,7 +171,9 @@ impl Pipeline {
             .and_then(|g| config.schema.col_index(g));
         let agg_col_idx = match &plan.aggregation {
             Aggregation::Count => None,
-            Aggregation::Sum(col) | Aggregation::Avg(col) => config.schema.col_index(col),
+            Aggregation::Sum(col)
+            | Aggregation::Avg(col)
+            | Aggregation::ApproxPercentile(col, _) => config.schema.col_index(col),
         };
         let user_id_idx = config.schema.col_index("user_id");
 
@@ -177,8 +187,11 @@ impl Pipeline {
         } else {
             mask.cloned().unwrap_or_default()
         };
+        let scan_offset = plan.offset.unwrap_or(0);
+        let scan_limit = plan.limit;
+        let mut rows_matched: u64 = 0;
 
-        for (path, _) in &sampled_sst_paths_with_counts {
+        'outer: for (path, _) in &sampled_sst_paths_with_counts {
             if let Ok(reader) = ColumnarReader::new(path.into(), 0) {
                 let start_seg_scan = std::time::Instant::now();
 
@@ -232,11 +245,23 @@ impl Pipeline {
                         }
                     }
 
+                    // Offset/limit: skip rows before offset, stop after limit
+                    if rows_matched < scan_offset {
+                        rows_matched += 1;
+                        continue;
+                    }
+                    if let Some(lim) = scan_limit {
+                        if rows_matched >= scan_offset + lim {
+                            break 'outer;
+                        }
+                    }
+
                     if crate::aqp::sampler::row_sampler::RowSampler::is_row_sampled(
                         idx as u64,
                         row_rate,
                         config.seed,
                     ) {
+                        rows_matched += 1;
                         final_count += 1;
                         for &col_idx in &needed_indices {
                             if let Some(data) = seg_i64.get(&col_idx) {
@@ -251,6 +276,8 @@ impl Pipeline {
                                     .push(data[idx]);
                             }
                         }
+                    } else {
+                        rows_matched += 1;
                     }
                 }
                 overall_profile.filtering_ms += start_seg_filter.elapsed().as_secs_f64() * 1000.0;
@@ -268,6 +295,7 @@ impl Pipeline {
         let (agg_value, variance) =
             aggregator.aggregate_columnar(&final_i64, &final_f64, agg_col_idx, group_col_idx);
 
+        let next_offset = scan_limit.map(|lim| scan_offset + lim);
         Ok(QueryResult {
             value: agg_value,
             confidence: ConfidenceFlag::High,
@@ -277,6 +305,8 @@ impl Pipeline {
             storage_path: StoragePath::Columnar,
             warnings: Vec::new(),
             profile: overall_profile,
+            aqp: None,
+            next_offset,
         })
     }
 
