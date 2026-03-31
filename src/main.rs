@@ -207,6 +207,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if command == "query" {
         let sql = args.get(2).expect("Missing SQL string");
         let mut accuracy = config.accuracy_target;
+        let requested_aqp_mode = args
+            .iter()
+            .position(|r| r == "--aqp-mode")
+            .and_then(|pos| args.get(pos + 1))
+            .cloned();
         if let Some(pos) = args.iter().position(|r| r == "--accuracy") {
             if let Some(val) = args.get(pos + 1) {
                 if let Ok(num) = val.parse::<f64>() {
@@ -215,14 +220,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let mut plan = query::parser::Parser::parse(sql)?;
+        let plan = query::parser::Parser::parse(sql)?;
         let execution_path = query::planner::QueryPlanner::plan(&plan, &storage);
         println!("[DEBUG] Chosen execution path: {:?}", execution_path);
 
         // Override config accuracy with command line accuracy
         let mut run_config = (*config).clone();
         run_config.accuracy_target = accuracy;
+        if let Some(mode) = requested_aqp_mode.clone() {
+            run_config.aqp_mode = mode;
+        }
         let config = std::sync::Arc::new(run_config);
+        let aqp_enabled = requested_aqp_mode.is_some()
+            || matches!(plan.aggregation, query::ast::Aggregation::ApproxPercentile(_, _));
 
         let start = Instant::now();
 
@@ -278,7 +288,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     query::ast::Aggregation::Sum(_) => {
                         crate::types::AggregateValue::Scalar(total_sum)
                     }
-                    query::ast::Aggregation::Avg(_) => {
+                    query::ast::Aggregation::Avg(_)
+                    | query::ast::Aggregation::ApproxPercentile(_, _) => {
                         if total_count > 0 {
                             crate::types::AggregateValue::Scalar(total_sum / total_count as f64)
                         } else {
@@ -296,6 +307,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     sampling_rate: 1.0,
                     estimated_variance: 0.0,
                     profile: crate::types::QueryProfile::default(),
+                    aqp: None,
+                    next_offset: None,
                 })
             }
             query::planner::ExecutionPath::Row { sstables } => {
@@ -307,8 +320,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 columns_needed,
             } => {
                 println!("[DEBUG] Path: Columnar ({} segments)", segments.len());
-                let pipeline = query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
-                pipeline.execute(&plan, &columns_needed, &config, mask, skip_dedup)
+                if aqp_enabled
+                    && query::executor::aqp_pipeline::AqpPipeline::supports_plan(&plan)
+                    && query::executor::aqp_pipeline::group_by_is_low_cardinality(&segments, &plan)?
+                {
+                    let pipeline = query::executor::aqp_pipeline::AqpPipeline::new(segments);
+                    pipeline.execute(&plan, &config, mask, skip_dedup)
+                } else {
+                    let pipeline = query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
+                    pipeline.execute(&plan, &columns_needed, &config, mask, skip_dedup)
+                }
             }
             query::planner::ExecutionPath::Mixed {
                 sstables,
@@ -321,50 +342,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     segments.len()
                 );
                 let row_pipeline = query::executor::pipeline::Pipeline::new(sstables);
-                let col_pipeline = query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
-
                 let res_row = row_pipeline.execute(&plan, &config, mask, skip_dedup)?;
-                let res_col =
-                    col_pipeline.execute(&plan, &columns_needed, &config, mask, skip_dedup)?;
 
-                // Merge results
-                let merged_value = match (&res_row.value, &res_col.value) {
-                    (AggregateValue::Scalar(s1), AggregateValue::Scalar(s2)) => {
-                        match &plan.aggregation {
-                            query::ast::Aggregation::Avg(_) => {
-                                let total_scanned = res_row.rows_scanned + res_col.rows_scanned;
-                                if total_scanned > 0 {
-                                    AggregateValue::Scalar(
-                                        (s1 * res_row.rows_scanned as f64
-                                            + s2 * res_col.rows_scanned as f64)
-                                            / total_scanned as f64,
-                                    )
-                                } else {
-                                    AggregateValue::Empty
-                                }
-                            }
-                            _ => AggregateValue::Scalar(s1 + s2),
-                        }
-                    }
-                    (AggregateValue::Scalar(s), AggregateValue::Empty)
-                    | (AggregateValue::Empty, AggregateValue::Scalar(s)) => {
-                        AggregateValue::Scalar(*s)
-                    }
-                    (AggregateValue::Empty, AggregateValue::Empty) => AggregateValue::Empty,
-                    _ => res_row.value.clone(), // Fallback for Groups (TODO: implement group merge)
-                };
-
-                let merged_confidence = if res_row.confidence == crate::types::ConfidenceFlag::Low
-                    || res_col.confidence == crate::types::ConfidenceFlag::Low
+                let res_col = if aqp_enabled
+                    && query::executor::aqp_pipeline::AqpPipeline::supports_plan(&plan)
+                    && query::executor::aqp_pipeline::group_by_is_low_cardinality(&segments, &plan)?
                 {
-                    crate::types::ConfidenceFlag::Low
-                } else if res_row.confidence == crate::types::ConfidenceFlag::Exact
-                    && res_col.confidence == crate::types::ConfidenceFlag::Exact
-                {
-                    crate::types::ConfidenceFlag::Exact
+                    let pipeline = query::executor::aqp_pipeline::AqpPipeline::new(segments);
+                    pipeline.execute(&plan, &config, mask, skip_dedup)?
                 } else {
-                    crate::types::ConfidenceFlag::High
+                    let pipeline = query::executor::col_pipeline::ColumnarPipeline::new(segments)?;
+                    pipeline.execute(&plan, &columns_needed, &config, mask, skip_dedup)?
                 };
+
+                let merged_value = merge_aggregate_values(
+                    &res_row.value,
+                    &res_col.value,
+                    &plan.aggregation,
+                    res_row.rows_scanned,
+                    res_col.rows_scanned,
+                );
+
+                let merged_confidence = merge_confidence(res_row.confidence, res_col.confidence);
 
                 Ok(QueryResult {
                     value: merged_value,
@@ -372,9 +371,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     warnings: [res_row.warnings, res_col.warnings].concat(),
                     storage_path: crate::types::StoragePath::Mixed,
                     rows_scanned: res_row.rows_scanned + res_col.rows_scanned,
-                    sampling_rate: (res_row.sampling_rate + res_col.sampling_rate) / 2.0, // Avg sampling rate
+                    sampling_rate: (res_row.sampling_rate + res_col.sampling_rate) / 2.0,
                     estimated_variance: 0.0,
-                    profile: res_row.profile, // Just take one for now
+                    profile: res_row.profile,
+                    aqp: res_col.aqp,
+                    next_offset: res_col.next_offset.or(res_row.next_offset),
                 })
             }
         }?;
@@ -461,6 +462,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         println!("Storage Path: {:?}", result.storage_path);
         println!("Effective Sampling Rate: {:.4}", result.sampling_rate);
+        if let Some(aqp) = &result.aqp {
+            println!(
+                "AQP: mode={} source={} sample_rate={:.4} sample_rows={} error={:.4}",
+                aqp.mode, aqp.source, aqp.sample_rate, aqp.sample_rows, aqp.estimated_error
+            );
+        }
 
         if !result.warnings.is_empty() {
             println!("Warnings: {:?}", result.warnings);
@@ -469,4 +476,89 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn merge_aggregate_values(
+    a: &AggregateValue,
+    b: &AggregateValue,
+    aggregation: &query::ast::Aggregation,
+    rows_a: u64,
+    rows_b: u64,
+) -> AggregateValue {
+    use std::collections::HashMap;
+    match (a, b) {
+        (AggregateValue::Scalar(s1), AggregateValue::Scalar(s2)) => {
+            match aggregation {
+                query::ast::Aggregation::Avg(_) => {
+                    let total = rows_a + rows_b;
+                    if total > 0 {
+                        AggregateValue::Scalar(
+                            (s1 * rows_a as f64 + s2 * rows_b as f64) / total as f64,
+                        )
+                    } else {
+                        AggregateValue::Empty
+                    }
+                }
+                _ => AggregateValue::Scalar(s1 + s2),
+            }
+        }
+        (AggregateValue::Scalar(s), AggregateValue::Empty)
+        | (AggregateValue::Empty, AggregateValue::Scalar(s)) => AggregateValue::Scalar(*s),
+        (AggregateValue::Empty, AggregateValue::Empty) => AggregateValue::Empty,
+        (AggregateValue::Groups(ga), AggregateValue::Groups(gb)) => {
+            // Merge two group maps key-by-key.
+            let mut merged: HashMap<String, (f64, u64, crate::types::ConfidenceFlag)> =
+                HashMap::new();
+            for (k, v, c) in ga {
+                merged.insert(k.clone(), (*v, rows_a, *c));
+            }
+            for (k, v, c) in gb {
+                merged
+                    .entry(k.clone())
+                    .and_modify(|(existing_v, existing_rows, existing_c)| {
+                        *existing_v = match aggregation {
+                            query::ast::Aggregation::Avg(_) => {
+                                let total = *existing_rows + rows_b;
+                                if total > 0 {
+                                    (*existing_v * *existing_rows as f64 + v * rows_b as f64)
+                                        / total as f64
+                                } else {
+                                    *existing_v
+                                }
+                            }
+                            _ => *existing_v + v,
+                        };
+                        *existing_rows += rows_b;
+                        *existing_c = merge_confidence(*existing_c, *c);
+                    })
+                    .or_insert((*v, rows_b, *c));
+            }
+            let mut groups: Vec<(String, f64, crate::types::ConfidenceFlag)> = merged
+                .into_iter()
+                .map(|(k, (v, _, c))| (k, v, c))
+                .collect();
+            groups.sort_by(|a, b| a.0.cmp(&b.0));
+            AggregateValue::Groups(groups)
+        }
+        (AggregateValue::Groups(g), AggregateValue::Empty)
+        | (AggregateValue::Empty, AggregateValue::Groups(g)) => {
+            AggregateValue::Groups(g.clone())
+        }
+        // Scalar + Groups: shouldn't happen in practice; keep the groups side.
+        (AggregateValue::Groups(g), _) | (_, AggregateValue::Groups(g)) => {
+            AggregateValue::Groups(g.clone())
+        }
+    }
+}
+
+fn merge_confidence(
+    a: crate::types::ConfidenceFlag,
+    b: crate::types::ConfidenceFlag,
+) -> crate::types::ConfidenceFlag {
+    use crate::types::ConfidenceFlag;
+    match (a, b) {
+        (ConfidenceFlag::Low, _) | (_, ConfidenceFlag::Low) => ConfidenceFlag::Low,
+        (ConfidenceFlag::High, _) | (_, ConfidenceFlag::High) => ConfidenceFlag::High,
+        _ => ConfidenceFlag::Exact,
+    }
 }
