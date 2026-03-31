@@ -1,3 +1,6 @@
+                          
+
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -58,6 +61,6 @@ mod tests {
         let data = vec![100i64, 105, 110, 108, 120];
         let encoded = DeltaEncoder::encode_i64(&data);
         let decoded = DeltaEncoder::decode_i64(&encoded);
-        assert_eq!(data, decoded);
+        assert_eq!(data.as_slice(), decoded.as_slice());
     }
 }
