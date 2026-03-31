@@ -32,12 +32,16 @@ impl QueryPlanner {
 
         let columns_needed = plan.required_columns();
 
-        if plan.filter.is_none() && plan.group_by.is_none() && sstables.is_empty() {
+        if plan.filter.is_none()
+            && plan.group_by.is_none()
+            && sstables.is_empty()
+            && !matches!(plan.aggregation, crate::query::ast::Aggregation::ApproxPercentile(_, _))
+        {
             let col = match &plan.aggregation {
                 crate::query::ast::Aggregation::Count => None,
-                crate::query::ast::Aggregation::Sum(c) | crate::query::ast::Aggregation::Avg(c) => {
-                    Some(c.clone())
-                }
+                crate::query::ast::Aggregation::Sum(c)
+                | crate::query::ast::Aggregation::Avg(c)
+                | crate::query::ast::Aggregation::ApproxPercentile(c, _) => Some(c.clone()),
             };
             return ExecutionPath::FastPath {
                 segments,
