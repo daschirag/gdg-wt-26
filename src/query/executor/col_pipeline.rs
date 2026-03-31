@@ -136,6 +136,7 @@ impl ColumnarPipeline {
                         AggregateValue::Empty
                     }
                 }
+                Aggregation::ApproxPercentile(_, _) => unreachable!(),
             };
             self.print_profile(
                 plan,
@@ -161,6 +162,8 @@ impl ColumnarPipeline {
                 sampling_rate: 1.0,
                 estimated_variance: 0.0,
                 profile,
+                aqp: None,
+                next_offset: None,
             });
         }
 
@@ -226,6 +229,7 @@ impl ColumnarPipeline {
                                 scalar_sum += sum;
                                 scalar_count += count;
                             }
+                            Aggregation::ApproxPercentile(_, _) => unreachable!(),
                         }
                     }
                     let agg_ms = agg_t.elapsed().as_secs_f64() * 1000.0;
@@ -366,6 +370,7 @@ impl ColumnarPipeline {
                                 }
                                 continue;
                             }
+                            Aggregation::ApproxPercentile(_, _) => unreachable!(),
                         };
 
                         let iter_t = Instant::now();
@@ -440,6 +445,7 @@ impl ColumnarPipeline {
                                 scalar_count += seg_count;
                                 rows_scanned += seg_count;
                             }
+                            Aggregation::ApproxPercentile(_, _) => unreachable!(),
                         }
                     }
                     stage_agg_ms += agg_t.elapsed().as_secs_f64() * 1000.0;
@@ -680,6 +686,7 @@ impl ColumnarPipeline {
                                         }
                                         detailed.agg_sum_ms += sum_t.elapsed().as_secs_f64() * 1000.0;
                                     }
+                                    Aggregation::ApproxPercentile(_, _) => unreachable!(),
                                 }
                             }
                             row_offset += len as usize;
@@ -709,8 +716,12 @@ impl ColumnarPipeline {
                     let agg_values = match &plan.aggregation {
                         Aggregation::Sum(col) | Aggregation::Avg(col) => i64_cols.get(col),
                         Aggregation::Count => None,
+                        Aggregation::ApproxPercentile(_, _) => unreachable!(),
                     };
-                    for row_idx in 0..row_count {
+                    let sf_offset = plan.offset.unwrap_or(0);
+                    let sf_limit = plan.limit;
+                    let mut sf_matched: u64 = 0;
+                    'scan_fallback: for row_idx in 0..row_count {
                         let matched = parsed_filter.as_ref().map_or(true, |expr| {
                             eval_preparsed(expr, &|column| {
                                 i64_cols.get(column).map(|vals| vals[row_idx])
@@ -719,6 +730,16 @@ impl ColumnarPipeline {
                         if !matched {
                             continue;
                         }
+                        if sf_matched < sf_offset {
+                            sf_matched += 1;
+                            continue;
+                        }
+                        if let Some(lim) = sf_limit {
+                            if sf_matched >= sf_offset + lim {
+                                break 'scan_fallback;
+                            }
+                        }
+                        sf_matched += 1;
                         rows_matched += 1;
                         rows_scanned += 1;
                         match &plan.group_by {
@@ -742,6 +763,7 @@ impl ColumnarPipeline {
                                         entry.1 += 1;
                                         detailed.agg_sum_ms += sum_t.elapsed().as_secs_f64() * 1000.0;
                                     }
+                                    Aggregation::ApproxPercentile(_, _) => unreachable!(),
                                 }
                             }
                             None => match &plan.aggregation {
@@ -756,6 +778,7 @@ impl ColumnarPipeline {
                                     scalar_count += 1;
                                     detailed.agg_sum_ms += sum_t.elapsed().as_secs_f64() * 1000.0;
                                 }
+                                Aggregation::ApproxPercentile(_, _) => unreachable!(),
                             },
                         }
                     }
@@ -784,6 +807,7 @@ impl ColumnarPipeline {
                             }
                             Aggregation::Count => count as f64,
                             Aggregation::Sum(_) => sum,
+                            Aggregation::ApproxPercentile(_, _) => unreachable!(),
                         };
                         (key, val, ConfidenceFlag::Exact)
                     })
@@ -800,6 +824,7 @@ impl ColumnarPipeline {
                         0.0
                     }
                 }
+                Aggregation::ApproxPercentile(_, _) => unreachable!(),
             };
             AggregateValue::Scalar(scalar)
         };
@@ -838,6 +863,7 @@ impl ColumnarPipeline {
             );
         }
 
+        let next_offset = plan.limit.map(|lim| plan.offset.unwrap_or(0) + lim);
         Ok(QueryResult {
             value,
             confidence: ConfidenceFlag::Exact,
@@ -847,6 +873,8 @@ impl ColumnarPipeline {
             sampling_rate: 1.0,
             estimated_variance: 0.0,
             profile,
+            aqp: None,
+            next_offset,
         })
     }
 
