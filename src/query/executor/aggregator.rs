@@ -93,6 +93,25 @@ impl<'a> Aggregator<'a> {
                     AggregateValue::Scalar(sum / count as f64)
                 }
             }
+            Aggregation::ApproxPercentile(col, quantile) => {
+                let mut values: Vec<f64> = rows
+                    .iter()
+                    .filter_map(|r| get_value(r, col, self.config))
+                    .filter_map(|v| match v {
+                        Value::Int(i) => Some(i as f64),
+                        Value::Float(f) => Some(f),
+                        _ => None,
+                    })
+                    .collect();
+                if values.is_empty() {
+                    AggregateValue::Empty
+                } else {
+                    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let idx = ((*quantile).clamp(0.0, 1.0) * (values.len() - 1) as f64).round()
+                        as usize;
+                    AggregateValue::Scalar(values[idx])
+                }
+            }
         }
     }
 
@@ -144,6 +163,10 @@ impl<'a> Aggregator<'a> {
                             }
                         }
                     }
+                    Aggregation::ApproxPercentile(_, _) => {
+                        entry.0 += 1.0;
+                        entry.1 += 1;
+                    }
                 }
             }
         }
@@ -158,7 +181,9 @@ impl<'a> Aggregator<'a> {
                         0.0
                     }
                 }
-                _ => val,
+                Aggregation::Count | Aggregation::Sum(_) | Aggregation::ApproxPercentile(_, _) => {
+                    val
+                }
             };
             let confidence = if count < self.config.low_confidence_threshold {
                 ConfidenceFlag::Low
@@ -225,6 +250,23 @@ impl<'a> Aggregator<'a> {
                     }
                 }
             }
+            Aggregation::ApproxPercentile(_, quantile) => {
+                if let Some(idx) = agg_col_idx {
+                    let mut values = Vec::new();
+                    if let Some(d) = i64_cols.get(&idx) {
+                        values.extend(d.as_slice().iter().map(|&v| v as f64));
+                    } else if let Some(d) = f64_cols.get(&idx) {
+                        values.extend(d.as_slice().iter().copied());
+                    }
+                    if values.is_empty() {
+                        return (AggregateValue::Empty, 0.0);
+                    }
+                    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let idx =
+                        ((*quantile).clamp(0.0, 1.0) * (values.len() - 1) as f64).round() as usize;
+                    return (AggregateValue::Scalar(values[idx]), 0.0);
+                }
+            }
         }
 
         if count == 0 {
@@ -284,6 +326,10 @@ impl<'a> Aggregator<'a> {
                         }
                     }
                 }
+                Aggregation::ApproxPercentile(_, _) => {
+                    entry.0 += 1.0;
+                    entry.1 += 1;
+                }
             }
         }
 
@@ -297,7 +343,9 @@ impl<'a> Aggregator<'a> {
                         0.0
                     }
                 }
-                _ => val,
+                Aggregation::Count | Aggregation::Sum(_) | Aggregation::ApproxPercentile(_, _) => {
+                    val
+                }
             };
             let confidence = if count < self.config.low_confidence_threshold {
                 ConfidenceFlag::Low
